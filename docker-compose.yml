@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+
+  # ── ChromaDB ──────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: hypertech-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+  # ── Langfuse database ─────────────────────────────────────
+  langfuse-db:
+    image: postgres:15-alpine
+    container_name: hypertech-langfuse-db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_postgres:/var/lib/postgresql/data
+
+  # ── Langfuse server ───────────────────────────────────────
+  langfuse-server:
+    image: langfuse/langfuse:latest
+    container_name: hypertech-langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: hypertech-local-secret
+      SALT: hypertech-local-salt
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  langfuse_postgres:
