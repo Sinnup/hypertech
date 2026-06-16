@@ -73,7 +73,20 @@ def update_pipeline_output(ticket_id: str, output: dict):
     span.end()
 
 
-def flush():
+def flush(timeout: float = 10.0):
+    """Flush pending spans with a deadline so the pipeline never hangs."""
     client = get_client()
-    if client:
-        client.flush()
+    if not client:
+        return
+    import threading
+    done = threading.Event()
+
+    def _flush():
+        try:
+            client.flush()
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_flush, daemon=True)
+    t.start()
+    done.wait(timeout=timeout)

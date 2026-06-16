@@ -8,6 +8,7 @@ ingested) by generating requirements from the prompt alone.
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
@@ -15,9 +16,19 @@ from langfuse import observe
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get
+from core.secrets.loader import get, get_optional
 from core.tracing.langfuse import get_client
 from agents.knowledge_base import agent as kb
+
+_REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
+
+
+def _update_registry(ticket_id: str, updates: dict):
+    registry = json.loads(_REGISTRY_PATH.read_text()) if _REGISTRY_PATH.exists() else {}
+    if ticket_id in registry:
+        registry[ticket_id].update(updates)
+        registry[ticket_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        _REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
 
 _SYSTEM = """You are a Business Analyst and Compliance expert for a Mexican fintech company.
 Given a product description and optional regulatory context, produce a structured JSON output:
@@ -122,6 +133,11 @@ def run(state: PipelineState) -> PipelineState:
                 f"*Summary:* {report['summary']}"
             ),
         )
+
+    _update_registry(ticket_id, {
+        "status": "compliance_checked",
+        "agents_involved": ["orchestrator", "ba_compliance"],
+    })
 
     state["compliance_report"] = report
     state["current_agent"] = "ba_compliance"

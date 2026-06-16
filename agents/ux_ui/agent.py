@@ -16,8 +16,18 @@ from langfuse import observe
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get
+from core.secrets.loader import get, get_optional
 from core.tracing.langfuse import get_client
+
+_REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
+
+
+def _update_registry(ticket_id: str, updates: dict):
+    registry = json.loads(_REGISTRY_PATH.read_text()) if _REGISTRY_PATH.exists() else {}
+    if ticket_id in registry:
+        registry[ticket_id].update(updates)
+        registry[ticket_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        _REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
 
 _BRIEF_SYSTEM = """You are a senior UX/UI designer for a Mexican fintech app.
 Given a product description and compliance requirements, produce a design brief as JSON:
@@ -124,6 +134,11 @@ def run(state: PipelineState) -> PipelineState:
         )
 
     slack.status(ticket_id, f"📐 Wireframe saved at poc/{ticket_id}/wireframe.html")
+
+    _update_registry(ticket_id, {
+        "status": "design_ready",
+        "agents_involved": ["orchestrator", "ba_compliance", "ux_ui"],
+    })
 
     state["design_brief"] = design_brief
     state["current_agent"] = "ux_ui"

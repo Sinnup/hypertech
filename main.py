@@ -9,7 +9,12 @@ Usage:
 import sys
 import uuid
 import argparse
+import logging
 from datetime import datetime, timezone
+
+# Quiet the OTEL background exporter — transient Langfuse export failures are
+# retried silently; we don't want them filling stdout during pipeline runs.
+logging.getLogger("opentelemetry.sdk.trace.export").setLevel(logging.CRITICAL)
 
 from core.state.pipeline_state import new_state
 from core.graph.workflow import build
@@ -31,19 +36,35 @@ def main():
 
     # Record final output on the pipeline trace and flush all pending spans
     from core.tracing.langfuse import update_pipeline_output, flush
+    coder_out = result.get("coder_output") or {}
     update_pipeline_output(ticket_id, {
         "status": result["status"],
         "scenario": result["scenario"],
-        "branch_url": result.get("coder_output", {}).get("branch_url"),
+        "branch_url": coder_out.get("branch_url"),
         "deploy_url": result.get("deploy_url"),
     })
     flush()
 
-    print(f"\n✅ Pipeline complete | Status: {result['status']}")
-    if result.get("deploy_url"):
-        print(f"   🌐 Live at: {result['deploy_url']}")
-    if result.get("coder_output"):
-        print(f"   📦 Branch: {result['coder_output'].get('branch_url')}")
+    print(f"\n✅ Pipeline complete | Status: {result['status']} | Scenario: {result['scenario']}")
+    if coder_out.get("branch_url"):
+        print(f"   📦 Branch: {coder_out['branch_url']}")
+    if result.get("compliance_report"):
+        report = result["compliance_report"]
+        print(f"   📋 Compliance: {report.get('overall_status', 'unknown').upper()}")
+    if result.get("design_brief"):
+        screens = result["design_brief"].get("screens", [])
+        print(f"   🎨 Design brief: {len(screens)} screen(s)")
+
+    deploy_url = result.get("deploy_url")
+    if deploy_url:
+        print(f"   🌐 Live at: {deploy_url}")
+        print(f"\n   Server is running — press Ctrl+C to stop.\n")
+        try:
+            import time
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n   Server stopped.")
     print()
 
 
