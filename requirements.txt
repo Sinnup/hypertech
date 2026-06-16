@@ -3,6 +3,7 @@ langchain
 langchain-anthropic
 langchain-community
 langchain-core
+langchain-text-splitters
 chromadb
 python-dotenv
 slack-sdk

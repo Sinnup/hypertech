@@ -1,0 +1,111 @@
+"""
+Infra agent — serves the generated POC HTML locally, optionally exposes via ngrok,
+posts the live URL to Slack #deployments.
+
+POC path: Python HTTP server on a random port; ngrok tunnel if NGROK_AUTH_TOKEN is set.
+"""
+
+import os
+import threading
+import socket
+import http.server
+import functools
+from pathlib import Path
+from datetime import datetime, timezone
+
+from langfuse import observe
+
+from core.state.pipeline_state import PipelineState, agent_message
+from core.notifications import slack
+from core.secrets.loader import get_optional
+from core.tracing.langfuse import get_client
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+def _serve(directory: str, port: int):
+    handler = functools.partial(
+        http.server.SimpleHTTPRequestHandler,
+        directory=directory,
+    )
+    server = http.server.HTTPServer(("0.0.0.0", port), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def _ngrok_tunnel(port: int) -> str | None:
+    """Start an ngrok tunnel and return the public URL, or None if not configured."""
+    token = get_optional("NGROK_AUTH_TOKEN")
+    if not token:
+        return None
+    try:
+        import ngrok  # pip install ngrok
+        listener = ngrok.forward(port, authtoken=token)
+        return listener.url()
+    except ImportError:
+        # Fall back to pyngrok if ngrok SDK not installed
+        try:
+            from pyngrok import ngrok as pyngrok, conf
+            conf.get_default().auth_token = token
+            tunnel = pyngrok.connect(port)
+            return tunnel.public_url
+        except ImportError:
+            return None
+
+
+@observe(name="infra-agent")
+def run(state: PipelineState) -> PipelineState:
+    ticket_id = state["ticket_id"]
+    coder_output = state.get("coder_output") or {}
+
+    slack.status(ticket_id, "🏗️ Infra agent started — preparing local deployment...")
+
+    local_path = coder_output.get("local_path")
+    if not local_path or not Path(local_path).exists():
+        # Fallback: look for the file in the standard poc/ location
+        fallback = Path(f"poc/{ticket_id}/index.html")
+        if fallback.exists():
+            local_path = str(fallback.resolve())
+        else:
+            slack.status(ticket_id, "⚠️ Infra agent: no HTML file found — skipping deployment.")
+            state["current_agent"] = "infra"
+            state["next_agent"] = None
+            state["status"] = "deploy_skipped"
+            state["last_updated"] = datetime.now(timezone.utc).isoformat()
+            return state
+
+    serve_dir = str(Path(local_path).parent)
+    port = _free_port()
+    _serve(serve_dir, port)
+
+    local_url = f"http://localhost:{port}/index.html"
+    public_url = _ngrok_tunnel(port) or local_url
+    if public_url != local_url:
+        deploy_url = f"{public_url}/index.html"
+    else:
+        deploy_url = local_url
+
+    client = get_client()
+    if client:
+        client.update_current_generation(
+            output={"deploy_url": deploy_url, "port": port},
+        )
+
+    slack.deployment(ticket_id, deploy_url)
+    slack.status(ticket_id, f"✅ POC live — {deploy_url}")
+
+    state["current_agent"] = "infra"
+    state["next_agent"] = None
+    state["status"] = "deployed"
+    state["deploy_url"] = deploy_url
+    state["last_updated"] = datetime.now(timezone.utc).isoformat()
+    state["agent_messages"].append(
+        agent_message("infra", "human", "deployed", ticket_id, {"deploy_url": deploy_url})
+    )
+
+    return state

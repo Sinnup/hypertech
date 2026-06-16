@@ -124,6 +124,11 @@ def run(state: PipelineState) -> PipelineState:
     repo = get("GITHUB_REPO")
     filename = f"poc/{ticket_id}/index.html"
 
+    # Save locally so the infra agent can serve without a GitHub round-trip
+    local_path = Path(filename)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_text(html_code)
+
     branch_url = _github_commit(token, repo, ticket_id, filename, html_code)
 
     slack.status(ticket_id, f"📦 Committed to branch: {branch_url}")
@@ -151,6 +156,7 @@ def run(state: PipelineState) -> PipelineState:
     state["status"] = "code_committed"
     state["coder_output"] = {
         "filename": filename,
+        "local_path": str(local_path.resolve()),
         "branch_url": branch_url,
         "lines": len(html_code.splitlines()),
     }
