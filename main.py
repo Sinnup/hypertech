@@ -29,6 +29,16 @@ def main():
     graph = build()
     result = graph.invoke(state)
 
+    # Record final output on the pipeline trace and flush all pending spans
+    from core.tracing.langfuse import update_pipeline_output, flush
+    update_pipeline_output(ticket_id, {
+        "status": result["status"],
+        "scenario": result["scenario"],
+        "branch_url": result.get("coder_output", {}).get("branch_url"),
+        "deploy_url": result.get("deploy_url"),
+    })
+    flush()
+
     print(f"\n✅ Pipeline complete | Status: {result['status']}")
     if result.get("deploy_url"):
         print(f"   🌐 Live at: {result['deploy_url']}")

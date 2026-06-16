@@ -9,9 +9,20 @@ import base64
 import requests
 from datetime import datetime, timezone
 from pathlib import Path
+from core.secrets.loader import get_optional
+
+REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
+
+def _update_registry(ticket_id: str, updates: dict):
+    registry = json.loads(REGISTRY_PATH.read_text()) if REGISTRY_PATH.exists() else {}
+    if ticket_id in registry:
+        registry[ticket_id].update(updates)
+        registry[ticket_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
+from langfuse.decorators import observe, langfuse_context
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
@@ -65,19 +76,45 @@ def _github_commit(token: str, repo: str, ticket_id: str, filename: str, content
     return f"https://github.com/{owner}/{repo_name}/tree/{branch}"
 
 
-def run(state: PipelineState) -> PipelineState:
-    ticket_id = state["ticket_id"]
-    prompt = state["human_prompt"]
-
-    slack.status(ticket_id, "💻 Coder agent started — generating POC prototype...")
-
+@observe(name="generate-poc", as_type="generation")
+def _generate_html(prompt: str) -> str:
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
         anthropic_api_key=get("ANTHROPIC_API_KEY"),
         temperature=0.3,
     )
     chain = _PROMPT | llm
-    html_code = chain.invoke({"prompt": prompt}).content
+    llm_result = chain.invoke({"prompt": prompt})
+    usage = llm_result.usage_metadata or {}
+    langfuse_context.update_current_observation(
+        model="claude-sonnet-4-6",
+        input={"prompt": prompt},
+        output=llm_result.content,
+        usage={
+            "input": usage.get("input_tokens", 0),
+            "output": usage.get("output_tokens", 0),
+            "total": usage.get("total_tokens", 0),
+        },
+    )
+    return llm_result.content
+
+
+@observe(name="coder-agent")
+def run(state: PipelineState) -> PipelineState:
+    ticket_id = state["ticket_id"]
+    prompt = state["human_prompt"]
+
+    slack.status(ticket_id, "💻 Coder agent started — generating POC prototype...")
+
+    raw = _generate_html(prompt)
+    raw = raw.strip()
+    # Strip markdown code fences if LLM wrapped the output
+    if raw.startswith("```"):
+        raw = raw.split("```", 2)[1]
+        if raw.startswith("html"):
+            raw = raw[4:]
+        raw = raw.rsplit("```", 1)[0].strip()
+    html_code = raw
 
     slack.status(ticket_id, "✅ Code generated — committing to GitHub...")
 
@@ -100,6 +137,12 @@ def run(state: PipelineState) -> PipelineState:
         f"## Changes\n- Generated POC prototype (`{filename}`)\n"
         f"- Branch: {branch_url}\n"
     )
+
+    _update_registry(ticket_id, {
+        "status": "code_committed",
+        "agents_involved": ["orchestrator", "coder"],
+        "branch": f"feature/{ticket_id}",
+    })
 
     state["current_agent"] = "coder"
     state["next_agent"] = "infra"
