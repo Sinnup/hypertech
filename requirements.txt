@@ -9,6 +9,7 @@ python-dotenv
 slack-sdk
 langfuse>=4,<5
 requests
+flask
 google-api-python-client
 google-auth
 google-auth-httplib2
