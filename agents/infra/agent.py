@@ -5,6 +5,7 @@ posts the live URL to Slack #deployments.
 POC path: Python HTTP server on a random port; ngrok tunnel if NGROK_AUTH_TOKEN is set.
 """
 
+import json
 import os
 import threading
 import socket
@@ -19,6 +20,16 @@ from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get_optional
 from core.tracing.langfuse import get_client
+
+_REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
+
+
+def _update_registry(ticket_id: str, updates: dict):
+    registry = json.loads(_REGISTRY_PATH.read_text()) if _REGISTRY_PATH.exists() else {}
+    if ticket_id in registry:
+        registry[ticket_id].update(updates)
+        registry[ticket_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
+        _REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
 
 
 def _free_port() -> int:
@@ -98,6 +109,12 @@ def run(state: PipelineState) -> PipelineState:
 
     slack.deployment(ticket_id, deploy_url)
     slack.status(ticket_id, f"✅ POC live — {deploy_url}")
+
+    _update_registry(ticket_id, {
+        "status": "deployed",
+        "agents_involved": ["orchestrator", "coder", "infra"],
+        "deploy_url": deploy_url,
+    })
 
     state["current_agent"] = "infra"
     state["next_agent"] = None
