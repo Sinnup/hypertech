@@ -8,12 +8,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langfuse.decorators import observe, langfuse_context
+from langfuse import observe
 from core.state.pipeline_state import PipelineState, agent_message
 from core.routing.intent_classifier import classify
 from core.notifications import slack
 from core.secrets.loader import get_optional
-from core.tracing.langfuse import trace_pipeline
+from core.tracing.langfuse import trace_pipeline, get_client
 
 REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 
@@ -36,12 +36,10 @@ def run(state: PipelineState) -> PipelineState:
 
     slack.status(ticket_id, "🟡 Orchestrator received prompt — classifying intent...")
 
-    # Link this @observe trace to the pipeline session so it groups with the pipeline-run trace
-    langfuse_context.update_current_trace(
-        session_id=ticket_id,
-        name="pipeline-run",
-        input={"prompt": prompt},
-    )
+    # Record input on the current trace span
+    client = get_client()
+    if client:
+        client.set_current_trace_io(input={"prompt": prompt, "ticket_id": ticket_id})
 
     # Start Langfuse trace for this pipeline run
     trace_pipeline(ticket_id=ticket_id, prompt=prompt)

@@ -1,17 +1,15 @@
 """
-Langfuse tracing — uses @observe decorators + manual spans (Langfuse v4, OTEL-based).
+Langfuse tracing — @observe decorators + manual spans (Langfuse v4, OTEL-based).
 """
 
 import os
-from langfuse import Langfuse
-from langfuse.decorators import observe, langfuse_context
+from langfuse import Langfuse, observe
 from core.secrets.loader import get_optional
 
 _HOST = get_optional("LANGFUSE_HOST", "http://localhost:3000")
 _PUBLIC_KEY = get_optional("LANGFUSE_PUBLIC_KEY")
 _SECRET_KEY = get_optional("LANGFUSE_SECRET_KEY")
 
-# Decorators read credentials from env vars at call time
 if _PUBLIC_KEY:
     os.environ["LANGFUSE_PUBLIC_KEY"] = _PUBLIC_KEY
 if _SECRET_KEY:
@@ -34,7 +32,7 @@ def get_client() -> Langfuse:
 
 
 def get_callback(trace_id: str = None, session_id: str = None):
-    """No-op — LangChain callbacks replaced by @observe decorators in v4."""
+    """No-op — LangChain callbacks replaced by @observe in v4."""
     return None
 
 
@@ -79,7 +77,3 @@ def flush():
     client = get_client()
     if client:
         client.flush()
-    try:
-        langfuse_context.flush()
-    except Exception:
-        pass

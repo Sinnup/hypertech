@@ -22,11 +22,12 @@ def _update_registry(ticket_id: str, updates: dict):
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
-from langfuse.decorators import observe, langfuse_context
+from langfuse import observe
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get
+from core.tracing.langfuse import get_client
 
 _SYSTEM = """You are an expert software developer. Given a product description, generate a simple
 single-file HTML+CSS+JS prototype that demonstrates the UI flow with dummy data.
@@ -86,16 +87,17 @@ def _generate_html(prompt: str) -> str:
     chain = _PROMPT | llm
     llm_result = chain.invoke({"prompt": prompt})
     usage = llm_result.usage_metadata or {}
-    langfuse_context.update_current_observation(
-        model="claude-sonnet-4-6",
-        input={"prompt": prompt},
-        output=llm_result.content,
-        usage={
-            "input": usage.get("input_tokens", 0),
-            "output": usage.get("output_tokens", 0),
-            "total": usage.get("total_tokens", 0),
-        },
-    )
+    client = get_client()
+    if client:
+        client.update_current_generation(
+            model="claude-sonnet-4-6",
+            input={"prompt": prompt},
+            output=llm_result.content,
+            usage_details={
+                "input": usage.get("input_tokens", 0),
+                "output": usage.get("output_tokens", 0),
+            },
+        )
     return llm_result.content
 
 

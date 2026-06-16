@@ -6,8 +6,9 @@ Uses Claude Haiku (cheapest) since this is a simple classification task.
 import json
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
-from langfuse.decorators import observe, langfuse_context
+from langfuse import observe
 from core.secrets.loader import get
+from core.tracing.langfuse import get_client
 
 _SYSTEM = """You are the intent classifier for an agentic software development system.
 Given a human prompt, return a JSON object with exactly these fields:
@@ -34,10 +35,12 @@ _PROMPT = ChatPromptTemplate.from_messages([
 
 @observe(name="intent-classifier", as_type="generation")
 def classify(prompt: str, ticket_id: str = None) -> dict:
-    langfuse_context.update_current_observation(
-        input={"prompt": prompt},
-        metadata={"model": "claude-haiku-4-5-20251001", "agent": "orchestrator"},
-    )
+    client = get_client()
+    if client:
+        client.update_current_generation(
+            input={"prompt": prompt},
+            metadata={"model": "claude-haiku-4-5-20251001", "agent": "orchestrator"},
+        )
 
     llm = ChatAnthropic(
         model="claude-haiku-4-5-20251001",
@@ -55,15 +58,14 @@ def classify(prompt: str, ticket_id: str = None) -> dict:
 
     parsed = json.loads(content)
 
-    # Forward token usage so Langfuse can calculate costs
     usage = result.usage_metadata or {}
-    langfuse_context.update_current_observation(
-        output=parsed,
-        model="claude-haiku-4-5-20251001",
-        usage={
-            "input": usage.get("input_tokens", 0),
-            "output": usage.get("output_tokens", 0),
-            "total": usage.get("total_tokens", 0),
-        },
-    )
+    if client:
+        client.update_current_generation(
+            output=parsed,
+            model="claude-haiku-4-5-20251001",
+            usage_details={
+                "input": usage.get("input_tokens", 0),
+                "output": usage.get("output_tokens", 0),
+            },
+        )
     return parsed
