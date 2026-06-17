@@ -43,9 +43,20 @@ def get_llm(
     """
     Create an LLM instance for *tier* using the active provider.
 
+    When ``PROVIDER_FALLBACK_ENABLED=true``, automatically falls back through
+    the configured provider chain on auth / rate-limit / timeout errors.
+    See ``core/ai/fallback.py`` for the full implementation.
+
     When ``AI_PROVIDER=deepseek`` and *tier* is ``POWERFUL``, *temperature*
     is intentionally not forwarded — deepseek-reasoner rejects it.
     """
+    # Fallback mode: delegate to the fallback wrapper (lazy import to
+    # avoid circular dependency with fallback.py → factory.py).
+    if os.getenv("PROVIDER_FALLBACK_ENABLED", "false").lower() in ("true", "1", "yes"):
+        from core.ai.fallback import get_llm_with_fallback
+
+        return get_llm_with_fallback(tier, temperature, max_tokens)
+
     provider = get_provider()
     model_id = get_model_id(tier)
 
