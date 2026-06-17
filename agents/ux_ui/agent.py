@@ -16,7 +16,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation, sum_token_usage
 import core.registry as registry_store
 
 _BRIEF_SYSTEM = """You are a senior UX/UI designer for a Mexican fintech app.
@@ -95,17 +95,14 @@ def run(state: PipelineState) -> PipelineState:
     wireframe_path.parent.mkdir(parents=True, exist_ok=True)
     wireframe_path.write_text(wireframe_html)
 
-    usage1 = brief_result.usage_metadata or {}
-    usage2 = wireframe_result.usage_metadata or {}
+    # Record combined token usage from both LLM calls
+    usage = sum_token_usage(brief_result, wireframe_result)
     client = get_client()
     if client:
         client.update_current_generation(
             model=get_model_id(ModelTier.BALANCED),
             output={"screens": len(design_brief.get("screens", []))},
-            usage_details={
-                "input": usage1.get("input_tokens", 0) + usage2.get("input_tokens", 0),
-                "output": usage1.get("output_tokens", 0) + usage2.get("output_tokens", 0),
-            },
+            usage_details=usage,
         )
 
     slack.status(ticket_id, f"📐 Wireframe saved at poc/{ticket_id}/wireframe.html")

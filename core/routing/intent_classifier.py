@@ -6,7 +6,7 @@ Uses the FAST model tier (cheapest) since this is a simple classification task.
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 
 _SYSTEM = """You are the intent classifier for an agentic software development system.
 Given a human prompt, return a JSON object with exactly these fields:
@@ -45,14 +45,5 @@ def classify(prompt: str, ticket_id: str = None) -> dict:
     result = chain.invoke({"prompt": prompt})
     parsed = parse_json(result.content)
 
-    usage = result.usage_metadata or {}
-    if client:
-        client.update_current_generation(
-            output=parsed,
-            model=get_model_id(ModelTier.FAST),
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.FAST), result, output=parsed)
     return parsed

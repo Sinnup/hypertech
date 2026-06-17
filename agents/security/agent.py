@@ -19,7 +19,7 @@ from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get_optional
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 
 _REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 _MAX_ITERATIONS = int(get_optional("MAX_SECURITY_ITERATIONS", "3"))
@@ -124,18 +124,7 @@ def run(state: PipelineState) -> PipelineState:
         "semgrep_json": json.dumps(semgrep_findings[:20], indent=2),
     })
     report = parse_json(result.content)
-
-    usage = result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model=get_model_id(ModelTier.BALANCED),
-            output={"overall_risk": report.get("overall_risk"), "findings": len(report.get("findings", []))},
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.BALANCED), result, output={"overall_risk": report.get("overall_risk"), "findings": len(report.get("findings", []))})
 
     risk = report.get("overall_risk", "unknown")
     findings = report.get("findings", [])

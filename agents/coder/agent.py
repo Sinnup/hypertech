@@ -17,7 +17,7 @@ from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
 
 _SYSTEM = """You are an expert software developer. Given a product description, generate a simple
@@ -73,18 +73,7 @@ def _generate_html(prompt: str) -> str:
     llm = get_llm(tier=ModelTier.BALANCED, temperature=0.3)
     chain = _PROMPT | llm
     llm_result = chain.invoke({"prompt": prompt})
-    usage = llm_result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model=get_model_id(ModelTier.BALANCED),
-            input={"prompt": prompt},
-            output=llm_result.content,
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.BALANCED), llm_result, output=llm_result.content)
     return llm_result.content
 
 

@@ -14,7 +14,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 from agents.knowledge_base import agent as kb
 import core.registry as registry_store
 
@@ -77,17 +77,7 @@ def run(state: PipelineState) -> PipelineState:
     chain = _PROMPT | llm
     result = chain.invoke({"prompt": prompt, "context": context})
     report = parse_json(result.content)
-
-    usage = result.usage_metadata or {}
-    if client:
-        client.update_current_generation(
-            model=get_model_id(ModelTier.BALANCED),
-            output=report,
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.BALANCED), result, output=report)
 
     status_emoji = {"compliant": "✅", "partial": "⚠️", "non_compliant": "❌", "unknown": "❓"}
     emoji = status_emoji.get(report["overall_status"], "❓")

@@ -19,7 +19,7 @@ from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get, get_optional
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 
 _REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 
@@ -109,18 +109,7 @@ def run(state: PipelineState) -> PipelineState:
     chain = _PROMPT | llm
     result = chain.invoke({"filename": filename, "code": code[:8000]})
     review = parse_json(result.content)
-
-    usage = result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model=get_model_id(ModelTier.FAST),
-            output={"verdict": review.get("verdict")},
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.FAST), result, output={"verdict": review.get("verdict")})
 
     verdict = review.get("verdict", "approved")
     issues = review.get("issues", [])

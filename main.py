@@ -30,6 +30,11 @@ def main():
     print(f"\n🚀 Starting pipeline | Ticket: {ticket_id}")
     print(f"   Prompt: {args.prompt}\n")
 
+    # Ensure Langfuse has model pricing for all configured providers.
+    # Idempotent — only creates models that don't already exist.
+    from core.ai.seed_models import seed as seed_models
+    seed_models()
+
     state = new_state(ticket_id=ticket_id, prompt=args.prompt)
     graph = build()
 

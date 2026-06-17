@@ -15,7 +15,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
 
 
@@ -88,17 +88,7 @@ def run(state: PipelineState) -> PipelineState:
         }
         slack.status(ticket_id, "⚠️ Architect: HLD JSON truncated — using minimal fallback. Human review required.")
 
-    usage = result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model=get_model_id(ModelTier.POWERFUL),
-            output={"components": len(hld.get("components", []))},
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.POWERFUL), result, output={"components": len(hld.get("components", []))})
 
     slack.status(
         ticket_id,
