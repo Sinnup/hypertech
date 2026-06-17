@@ -103,7 +103,7 @@ def run(state: PipelineState) -> PipelineState:
     client = get_client()
     if client:
         client.update_current_generation(
-            model="claude-opus-4-6",
+            model="claude-opus-4-8",
             output={"components": len(hld.get("components", []))},
             usage_details={
                 "input": usage.get("input_tokens", 0),

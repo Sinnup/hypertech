@@ -32,17 +32,20 @@ def main():
 
     state = new_state(ticket_id=ticket_id, prompt=args.prompt)
     graph = build()
-    result = graph.invoke(state)
 
-    # Record final output on the pipeline trace and flush all pending spans
-    from core.tracing.langfuse import update_pipeline_output, flush
-    coder_out = result.get("coder_output") or {}
-    update_pipeline_output(ticket_id, {
-        "status": result["status"],
-        "scenario": result["scenario"],
-        "branch_url": coder_out.get("branch_url"),
-        "deploy_url": result.get("deploy_url"),
-    })
+    # Open one root span around the whole run so every agent span and LLM
+    # generation nests into a single trace and token usage rolls up.
+    from core.tracing.langfuse import pipeline_trace, record_pipeline_output, flush
+    with pipeline_trace(ticket_id, args.prompt):
+        result = graph.invoke(state)
+
+        coder_out = result.get("coder_output") or {}
+        record_pipeline_output({
+            "status": result["status"],
+            "scenario": result["scenario"],
+            "branch_url": coder_out.get("branch_url"),
+            "deploy_url": result.get("deploy_url"),
+        })
     flush()
 
     print(f"\n✅ Pipeline complete | Status: {result['status']} | Scenario: {result['scenario']}")

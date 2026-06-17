@@ -1,9 +1,28 @@
 """
-Langfuse tracing — @observe decorators + manual spans (Langfuse v4, OTEL-based).
+Langfuse tracing — Langfuse v4 (OTEL-based).
+
+Why this shape:
+  LangGraph runs every agent node synchronously inside a single graph.invoke()
+  call, and Langfuse's @observe spans nest by OpenTelemetry context on that
+  thread. So we open ONE root span around the whole pipeline run
+  (``pipeline_trace``) and every agent's @observe span — and every LLM
+  generation recorded with ``update_current_generation`` — lands inside that
+  one trace. Token usage and cost then roll up to the pipeline level instead of
+  being scattered across one disconnected trace per node.
+
+API notes (v4.8):
+  - ``langfuse.decorators`` / ``langfuse_context`` do NOT exist in v4. Use the
+    client's ``update_current_generation`` / ``update_current_span`` /
+    ``set_current_trace_io`` instead.
+  - Token usage goes in ``usage_details=`` (not ``usage=``).
+  - ``Langfuse.trace(...)`` does not exist in v4; use ``start_observation`` /
+    ``start_as_current_observation``.
 """
 
 import os
-from langfuse import Langfuse, observe
+from contextlib import contextmanager
+
+from langfuse import Langfuse
 from core.secrets.loader import get_optional
 
 _HOST = get_optional("LANGFUSE_HOST", "http://localhost:3000")
@@ -21,6 +40,7 @@ _client: Langfuse = None
 
 
 def get_client() -> Langfuse:
+    """Return the configured Langfuse client, or None if keys are absent."""
     global _client
     if _client is None and _PUBLIC_KEY and _SECRET_KEY:
         _client = Langfuse(
@@ -31,46 +51,44 @@ def get_client() -> Langfuse:
     return _client
 
 
-def get_callback(trace_id: str = None, session_id: str = None):
-    """No-op — LangChain callbacks replaced by @observe in v4."""
-    return None
+@contextmanager
+def pipeline_trace(ticket_id: str, prompt: str, scenario: str = None):
+    """
+    Root span for one pipeline run. Wrap ``graph.invoke()`` in this so every
+    agent span and LLM generation nests into a single trace.
 
-
-def _trace_id_for(ticket_id: str) -> str:
+    The trace id is seeded from the ticket id so re-runs of the same ticket map
+    to a stable, predictable trace. Yields the root span (or None if Langfuse
+    is not configured, so callers stay null-safe without branching).
+    """
     client = get_client()
     if not client:
-        return None
-    return client.create_trace_id(seed=ticket_id)
+        yield None
+        return
 
-
-def trace_pipeline(ticket_id: str, prompt: str, scenario: str = None):
-    """Open a root trace span for the pipeline run."""
-    client = get_client()
-    if not client:
-        return None
-    trace_id = _trace_id_for(ticket_id)
-    span = client.start_observation(
+    trace_id = client.create_trace_id(seed=ticket_id)
+    with client.start_as_current_observation(
         name="pipeline-run",
         trace_context={"trace_id": trace_id},
         input={"prompt": prompt},
-        metadata={"scenario": scenario, "ticket_id": ticket_id},
-    )
-    span.end()
-    return span
+        metadata={"ticket_id": ticket_id, "scenario": scenario},
+    ) as span:
+        # Surface input at the trace level too (not just the root span).
+        client.set_current_trace_io(input={"prompt": prompt})
+        yield span
 
 
-def update_pipeline_output(ticket_id: str, output: dict):
-    """Record final pipeline output on the root trace."""
+def record_pipeline_output(output: dict):
+    """
+    Record the final pipeline output on the root span and trace.
+    Must be called while still inside ``pipeline_trace`` (i.e. before the
+    context manager exits) so the current observation is the root span.
+    """
     client = get_client()
     if not client:
         return
-    trace_id = _trace_id_for(ticket_id)
-    span = client.start_observation(
-        name="pipeline-complete",
-        trace_context={"trace_id": trace_id},
-        output=output,
-    )
-    span.end()
+    client.update_current_span(output=output)
+    client.set_current_trace_io(output=output)
 
 
 def flush(timeout: float = 10.0):

@@ -23,7 +23,7 @@
 |---|---|---|---|
 | LLM | Claude Haiku / Sonnet / Opus | Pay-per-use | Haiku ~$0.08/MTok input; Sonnet ~$3/MTok |
 | Orchestration | LangGraph (OSS) | Free | Stateful, resumable, human-in-the-loop native. Phase 2 evolution → Koog (Kotlin-native agents, see §15) |
-| Agent Tracing | Langfuse v3 (local Docker Compose) | Free | Self-hosted locally, same compose stack as ChromaDB. OTEL-native in v4 Python SDK. Model cost catalog includes Claude 4.x. |
+| Agent Tracing | Langfuse v4 (local Docker Compose) | Free | Self-hosted locally, same compose stack as ChromaDB. OTEL-native v4 Python SDK — one root span per pipeline run (`main.py` wraps `graph.invoke()`) so all agent spans + token costs roll up into a single trace. Model cost catalog includes Claude 4.x. |
 | Notifications + HitL | Slack | Free tier | Webhooks + Slack app with interactive buttons |
 | Source Control | GitHub | Free | Public or private repo |
 | CI/CD | GitHub Actions | Free (2k min/mo private) | Enough for POC |

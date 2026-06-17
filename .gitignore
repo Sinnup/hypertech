@@ -19,3 +19,6 @@ node_modules/
 # Docker
 *.log
 hypertech-links.md
+
+# Feature registry file lock (runtime artifact)
+features/feature-registry.lock

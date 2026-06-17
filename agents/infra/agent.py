@@ -103,9 +103,7 @@ def run(state: PipelineState) -> PipelineState:
 
     client = get_client()
     if client:
-        client.update_current_generation(
-            output={"deploy_url": deploy_url, "port": port},
-        )
+        client.update_current_span(output={"deploy_url": deploy_url, "port": port})
 
     slack.deployment(ticket_id, deploy_url)
     slack.status(ticket_id, f"✅ POC live — {deploy_url}")
