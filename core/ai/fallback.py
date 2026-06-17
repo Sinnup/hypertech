@@ -105,7 +105,10 @@ def current_provider() -> str:
 # ---------------------------------------------------------------------------
 
 class _FallbackChatModel(BaseChatModel):
-    """Wraps a chain of provider → LLM pairs with automatic failover on invoke.
+    """Wraps a chain of provider -> LLM pairs with automatic failover.
+
+    Intercepts ``_generate``, ``_stream``, and ``_agenerate`` so sync,
+    streaming, and async invocations all benefit from fallback.
 
     LLMs are created lazily (only when needed) so the primary provider enjoys
     zero overhead when it succeeds.
@@ -123,7 +126,6 @@ class _FallbackChatModel(BaseChatModel):
         self._tier = tier
         self._temperature = temperature
         self._max_tokens = max_tokens
-        # Cache the built LLMs so we don't recreate them on every invoke
         self._cache: dict[str, BaseChatModel] = {}
 
     def _build(self, provider: str) -> BaseChatModel:
@@ -142,22 +144,15 @@ class _FallbackChatModel(BaseChatModel):
                     os.environ["PROVIDER_FALLBACK_ENABLED"] = old
         return self._cache[provider]
 
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: Optional[list[str]] = None,
-        run_manager: Optional[Any] = None,
-        **kwargs: Any,
-    ) -> Any:
+    def _try_generate(self, messages, stop, run_manager, **kwargs):
+        """Core fallback loop shared by sync + async paths."""
         errors: list[str] = []
         for i, (provider, _) in enumerate(self._chain):
             try:
                 llm = self._build(provider)
                 result = llm._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
                 if i > 0:
-                    _notify_fallback(
-                        self._chain[0][0], provider, self._tier, errors
-                    )
+                    _notify_fallback(self._chain[0][0], provider, self._tier, errors)
                 return result
             except Exception as e:
                 if not _is_fallback_error(e):
@@ -165,6 +160,33 @@ class _FallbackChatModel(BaseChatModel):
                 errors.append(f"{provider}: {e}")
         raise RuntimeError(
             f"All providers failed for tier '{self._tier.value}'. "
+            f"Errors: {' | '.join(errors)}"
+        )
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        return self._try_generate(messages, stop, run_manager, **kwargs)
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        import asyncio
+        return await asyncio.to_thread(self._try_generate, messages, stop, run_manager, **kwargs)
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        """Stream from the primary provider, falling back on failure."""
+        errors: list[str] = []
+        for i, (provider, _) in enumerate(self._chain):
+            try:
+                llm = self._build(provider)
+                for chunk in llm._stream(messages, stop=stop, run_manager=run_manager, **kwargs):
+                    yield chunk
+                if i > 0:
+                    _notify_fallback(self._chain[0][0], provider, self._tier, errors)
+                return
+            except Exception as e:
+                if not _is_fallback_error(e):
+                    raise
+                errors.append(f"{provider}: {e}")
+        raise RuntimeError(
+            f"All providers failed for tier '{self._tier.value}' (stream). "
             f"Errors: {' | '.join(errors)}"
         )
 
