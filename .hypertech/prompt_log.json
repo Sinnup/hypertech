@@ -195,6 +195,22 @@
       ],
       "session_title": "HT-010 backlog — Slack-initiated pipeline spec",
       "milestone": "post-sprint — backlog grooming"
+    },
+    {
+      "id": "ht-012",
+      "date": "2026-06-17",
+      "sha": null,
+      "category": "feature",
+      "prompt_summary": "HT-010 implementation: extracted run_pipeline() from main.py as importable function, added /new Slack command handler with async pipeline execution (Thread), immediate ticket ID response, pre-registration in feature registry, completion/failure Slack notifications. Fixed slack.py: added alert() function, made post() resilient to missing webhook URL. End-to-end test passed: POC ran orchestrator→coder→infra→deployed via Slack /new.",
+      "key_files": [
+        "main.py",
+        "core/notifications/slack_commands.py",
+        "core/notifications/slack.py",
+        "changelogs/HT-010.md",
+        "features/feature-registry.json"
+      ],
+      "session_title": "HT-010 implementation — Slack-initiated pipeline",
+      "milestone": "post-sprint — Slack /new command"
     }
   ]
 }

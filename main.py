@@ -4,6 +4,8 @@ Entry point — run the agentic pipeline with a human prompt.
 Usage:
     python main.py "Build a payment confirmation screen POC"
     python main.py --ticket HT-001 "Build a login flow prototype"
+
+Also importable — ``run_pipeline()`` is used by slack_commands for /new.
 """
 
 import sys
@@ -11,6 +13,7 @@ import uuid
 import argparse
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 # Quiet the OTEL background exporter — transient Langfuse export failures are
 # retried silently; we don't want them filling stdout during pipeline runs.
@@ -18,6 +21,43 @@ logging.getLogger("opentelemetry.sdk.trace.export").setLevel(logging.CRITICAL)
 
 from core.state.pipeline_state import new_state
 from core.graph.workflow import build
+
+
+def run_pipeline(ticket_id: str, prompt: str) -> dict:
+    """
+    Run the full LangGraph pipeline for a ticket.
+
+    Args:
+        ticket_id: The ticket ID (e.g. "HT-AB12CD").
+        prompt: The natural-language prompt to process.
+
+    Returns:
+        The final PipelineState dict after all agents have run.
+
+    This is the importable entry point — used by both the CLI (main) and
+    Slack commands (/new).  It seeds Langfuse models, builds the graph,
+    runs it inside a root trace span, and records pipeline output.
+    """
+    from core.ai.seed_models import seed as seed_models
+    seed_models()
+
+    state = new_state(ticket_id=ticket_id, prompt=prompt)
+    graph = build()
+
+    from core.tracing.langfuse import pipeline_trace, record_pipeline_output, flush
+    with pipeline_trace(ticket_id, prompt):
+        result = graph.invoke(state)
+
+        coder_out = result.get("coder_output") or {}
+        record_pipeline_output({
+            "status": result["status"],
+            "scenario": result["scenario"],
+            "branch_url": coder_out.get("branch_url"),
+            "deploy_url": result.get("deploy_url"),
+        })
+    flush()
+
+    return result
 
 
 def main():
@@ -30,28 +70,9 @@ def main():
     print(f"\n🚀 Starting pipeline | Ticket: {ticket_id}")
     print(f"   Prompt: {args.prompt}\n")
 
-    # Ensure Langfuse has model pricing for all configured providers.
-    # Idempotent — only creates models that don't already exist.
-    from core.ai.seed_models import seed as seed_models
-    seed_models()
+    result = run_pipeline(ticket_id, args.prompt)
 
-    state = new_state(ticket_id=ticket_id, prompt=args.prompt)
-    graph = build()
-
-    # Open one root span around the whole run so every agent span and LLM
-    # generation nests into a single trace and token usage rolls up.
-    from core.tracing.langfuse import pipeline_trace, record_pipeline_output, flush
-    with pipeline_trace(ticket_id, args.prompt):
-        result = graph.invoke(state)
-
-        coder_out = result.get("coder_output") or {}
-        record_pipeline_output({
-            "status": result["status"],
-            "scenario": result["scenario"],
-            "branch_url": coder_out.get("branch_url"),
-            "deploy_url": result.get("deploy_url"),
-        })
-    flush()
+    coder_out = result.get("coder_output") or {}
 
     print(f"\n✅ Pipeline complete | Status: {result['status']} | Scenario: {result['scenario']}")
     if coder_out.get("branch_url"):

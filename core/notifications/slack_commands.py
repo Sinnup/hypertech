@@ -1,5 +1,5 @@
 """
-Slack slash command handlers — responds to /status, /reload-kb, /deploy.
+Slack slash command handlers — responds to /status, /reload-kb, /deploy, /new.
 
 Run this as a standalone Flask server (or mount on an existing app) and point
 your Slack app's slash command Request URL at it.
@@ -13,7 +13,10 @@ Usage (local dev):
 import json
 import hashlib
 import hmac
+import re
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
 
@@ -64,6 +67,8 @@ def slack_commands():
         return _handle_deploy(text, user_id)
     if command == "/switch-provider":
         return _handle_switch_provider(text, user_id)
+    if command == "/new":
+        return _handle_new(text, user_id)
 
     return jsonify({"text": f"Unknown command: {command}"}), 200
 
@@ -153,6 +158,119 @@ def _handle_switch_provider(text: str, user_id: str):
     return jsonify({
         "text": f"✅ Provider switched: `{previous}` → `{target}`. "
                 f"Note: this only affects the current process."
+    }), 200
+
+
+def _handle_new(text: str, user_id: str):
+    """
+    Kick off a new pipeline run from Slack.
+
+    Usage: /new [--scenario poc|internal|production] <prompt>
+
+    Responds immediately with a ticket ID, then runs the pipeline
+    asynchronously.  The caller gets a Slack notification when the
+    pipeline completes (or fails).
+    """
+    # ── parse ──────────────────────────────────────────────────────────
+    scenario_hint: str | None = None
+    prompt = text.strip()
+
+    m = re.match(r"^--scenario\s+(poc|internal|production)\s+(.+)", prompt, re.IGNORECASE)
+    if m:
+        scenario_hint = m.group(1).lower()
+        prompt = m.group(2).strip()
+
+    if not prompt:
+        return jsonify({
+            "text": (
+                "Usage: `/new [--scenario poc|internal|production] <prompt>`\n"
+                "Examples:\n"
+                "• `/new Quick POC: landing page with hero`\n"
+                "• `/new --scenario production Build a payment KYC compliance screen`"
+            )
+        }), 200
+
+    # ── ticket ─────────────────────────────────────────────────────────
+    ticket_id = f"HT-{uuid.uuid4().hex[:6].upper()}"
+
+    # Pre-register so /status works immediately
+    from core.registry import create_ticket
+    now = datetime.now(timezone.utc).isoformat()
+    create_ticket(ticket_id, {
+        "title": prompt[:80],
+        "scenario": scenario_hint or "auto-detect",
+        "status": "queued",
+        "created": now,
+        "agents_involved": [],
+        "human_approvals": [],
+        "branch": f"feature/{ticket_id}",
+        "changelog_ref": f"changelogs/{ticket_id}.md",
+    })
+
+    # ── launch (async) ─────────────────────────────────────────────────
+    def _run():
+        try:
+            from main import run_pipeline
+            result = run_pipeline(ticket_id, prompt)
+
+            status = result.get("status", "unknown")
+            scenario = result.get("scenario", "?")
+            deploy_url = result.get("deploy_url")
+            coder_out = result.get("coder_output") or {}
+            branch_url = coder_out.get("branch_url")
+            error = result.get("error")
+
+            if error:
+                slack.alert(
+                    f"❌ *Pipeline {ticket_id} failed*\n"
+                    f"*Prompt:* {prompt[:100]}\n"
+                    f"*Scenario:* {scenario}\n"
+                    f"*Error:* {error}\n"
+                    f"*Triggered by:* <@{user_id}>",
+                    channel="#pipeline-alerts",
+                )
+                return
+
+            lines = [
+                f"✅ *Pipeline {ticket_id} complete*",
+                f"*Prompt:* {prompt[:100]}",
+                f"*Scenario:* {scenario}",
+                f"*Status:* {status}",
+            ]
+            if branch_url:
+                lines.append(f"*Branch:* {branch_url}")
+            if deploy_url:
+                lines.append(f"*Live at:* {deploy_url}")
+            lines.append(f"*Triggered by:* <@{user_id}>")
+
+            slack.alert("\n".join(lines), channel="#pipeline-alerts")
+
+        except Exception as e:
+            slack.alert(
+                f"❌ *Pipeline {ticket_id} crashed*\n"
+                f"*Prompt:* {prompt[:100]}\n"
+                f"*Error:* {type(e).__name__}: {e}\n"
+                f"*Triggered by:* <@{user_id}>",
+                channel="#pipeline-alerts",
+            )
+            # Update registry with failure
+            try:
+                from core.registry import update_ticket
+                update_ticket(ticket_id, {"status": "failed", "error": str(e)})
+            except Exception:
+                pass
+
+    Thread(target=_run, daemon=True).start()
+
+    # ── respond immediately ────────────────────────────────────────────
+    sc = f" ({scenario_hint})" if scenario_hint else ""
+    return jsonify({
+        "text": (
+            f"🔄 *Pipeline queued — {ticket_id}*\n"
+            f"*Scenario:* {scenario_hint or 'auto-detect'}{sc}\n"
+            f"*Prompt:* {prompt[:100]}\n"
+            f"I'll notify <@{user_id}> when complete."
+        )
     }), 200
 
 
