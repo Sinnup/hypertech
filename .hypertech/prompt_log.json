@@ -133,6 +133,30 @@
       ],
       "session_title": "Thursday milestone build",
       "milestone": "Thursday — OTEL + architect fixes"
+    },
+    {
+      "id": "ht-009",
+      "date": "2026-06-16",
+      "sha": "676ee897e5acc14e2444a6be382ad4d64f7c92c1",
+      "category": "feature",
+      "prompt_summary": "Add DeepSeek AI provider support via Strategy+Registry+Factory pattern: new core/ai/ module with ModelTier enum, provider registry, get_llm() factory, and shared response parsing (parse_json/strip_fences). All 7 agents + intent_classifier now use get_llm() instead of hardcoded ChatAnthropic. Provider selected via AI_PROVIDER env var (default: claude). Handles deepseek-reasoner quirks (no temperature, <think> blocks).",
+      "key_files": [
+        "core/ai/__init__.py",
+        "core/ai/models.py",
+        "core/ai/factory.py",
+        "core/ai/parsing.py",
+        "agents/coder/agent.py",
+        "agents/architect/agent.py",
+        "agents/ba_compliance/agent.py",
+        "agents/ux_ui/agent.py",
+        "agents/pr_review/agent.py",
+        "agents/security/agent.py",
+        "core/routing/intent_classifier.py",
+        "requirements.txt",
+        ".env.example"
+      ],
+      "session_title": "DeepSeek AI provider support",
+      "milestone": "post-sprint — multi-provider AI"
     }
   ]
 }
