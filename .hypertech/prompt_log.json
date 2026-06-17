@@ -1,0 +1,138 @@
+{
+  "version": "1.0",
+  "repo": "Sinnup/hypertech",
+  "description": "Tracks every natural-language prompt that drove a commit to this repo. Maintained by Claude — append a new entry before each commit.",
+  "entries": [
+    {
+      "id": "ht-001",
+      "date": "2026-06-15",
+      "sha": "a8502e093574ed03c585e5f41120da3226c5bb0d",
+      "category": "scaffold",
+      "prompt_summary": "Bootstrap the agentic company pipeline: orchestrator agent for intent routing, coder agent for code generation + GitHub commits, knowledge base agent, support agent, LangGraph multi-agent workflow, Slack notifications, Langfuse tracing, Docker Compose stack, .env template",
+      "key_files": [
+        "agents/orchestrator/agent.py",
+        "agents/coder/agent.py",
+        "agents/knowledge_base/agent.py",
+        "agents/support/__init__.py",
+        "core/graph/workflow.py",
+        "core/notifications/__init__.py",
+        "main.py",
+        ".env.example",
+        "requirements.txt"
+      ],
+      "session_title": "Initial agentic pipeline scaffold",
+      "milestone": "Monday — core loop"
+    },
+    {
+      "id": "ht-002",
+      "date": "2026-06-15",
+      "sha": "2408c00375f42fc7404e1124495ad7d263cdc69d",
+      "category": "upgrade",
+      "prompt_summary": "Upgrade Langfuse from v2 to v4: migrate tracing SDK, add per-span token + cost tracking to orchestrator and coder agents, update Docker Compose to Langfuse v3 server image, fix requirements",
+      "key_files": [
+        "core/tracing/langfuse.py",
+        "agents/coder/agent.py",
+        "agents/orchestrator/agent.py",
+        "core/routing/intent_classifier.py",
+        "docker-compose.yml",
+        "requirements.txt"
+      ],
+      "session_title": "Initial setup analysis and enhancement",
+      "milestone": "Monday — observability"
+    },
+    {
+      "id": "ht-003",
+      "date": "2026-06-16",
+      "sha": "bc6f88631e3b32dc4d545e057efa813951337d10",
+      "category": "infra",
+      "prompt_summary": "Complete Langfuse v4 SDK migration across all agents, add ClickHouse + MinIO services to Docker Compose for analytics storage, generate changelogs for deployed features, update intent classifier routing",
+      "key_files": [
+        "agents/coder/agent.py",
+        "agents/orchestrator/agent.py",
+        "core/routing/intent_classifier.py",
+        "docker-compose.yml",
+        "changelogs/"
+      ],
+      "session_title": "Initial setup analysis and enhancement",
+      "milestone": "Tuesday — full observability stack"
+    },
+    {
+      "id": "ht-004",
+      "date": "2026-06-16",
+      "sha": "3f51f5e2e472d07364678d14e94f932575eac699",
+      "category": "feature",
+      "prompt_summary": "Wednesday milestone: build infra agent (Docker local deploy + ngrok URL to Slack), BA/compliance agent (requirements analysis + regulatory checks), UX/UI agent (wireframe generation), expand knowledge base agent, add Chroma vector memory layer, add Google Drive document ingestion",
+      "key_files": [
+        "agents/infra/agent.py",
+        "agents/ba_compliance/agent.py",
+        "agents/ux_ui/agent.py",
+        "agents/knowledge_base/agent.py",
+        "core/memory/chroma.py",
+        "ingestion/google_drive/ingest.py",
+        "core/graph/workflow.py",
+        "requirements.txt"
+      ],
+      "session_title": "Wednesday milestone build",
+      "milestone": "Wednesday — infra + compliance + UX agents"
+    },
+    {
+      "id": "ht-005",
+      "date": "2026-06-16",
+      "sha": "eccc59cfeba1574906ae71b2061d27b972fd5d87",
+      "category": "fix",
+      "prompt_summary": "Fix pipeline bugs found during Wednesday verification run: BA/compliance agent output schema, UX/UI agent tool call format, Langfuse OTEL span propagation, main.py orchestration error handling",
+      "key_files": [
+        "agents/ba_compliance/agent.py",
+        "agents/ux_ui/agent.py",
+        "core/tracing/langfuse.py",
+        "main.py"
+      ],
+      "session_title": "Wednesday milestone build",
+      "milestone": "Wednesday — bug fixes"
+    },
+    {
+      "id": "ht-006",
+      "date": "2026-06-16",
+      "sha": "52656f3f787ed052db17a9032f0e0248338bccf9",
+      "category": "fix",
+      "prompt_summary": "Fix infra agent: after successful Docker deployment, update the shared feature registry to set the deployed feature's status to 'deployed' so other agents can observe it",
+      "key_files": [
+        "agents/infra/agent.py"
+      ],
+      "session_title": "Wednesday milestone build",
+      "milestone": "Wednesday — registry sync fix"
+    },
+    {
+      "id": "ht-007",
+      "date": "2026-06-16",
+      "sha": "b5c69fcb42918a01216007a34160e50b0a2ce87d",
+      "category": "feature",
+      "prompt_summary": "Thursday milestone: build architect agent (high-level code review + design proposals), PR review agent (diff analysis + quality gate), security agent (OWASP checks + vulnerability scan), GitHub Actions CI/CD pipeline (lint, test, build, deploy), Slack slash command handlers",
+      "key_files": [
+        "agents/architect/agent.py",
+        "agents/pr_review/agent.py",
+        "agents/security/agent.py",
+        ".github/workflows/ci.yml",
+        "core/notifications/slack_commands.py",
+        "core/graph/workflow.py",
+        "requirements.txt"
+      ],
+      "session_title": "Thursday milestone build",
+      "milestone": "Thursday — architect + PR review + security + CI/CD"
+    },
+    {
+      "id": "ht-008",
+      "date": "2026-06-16",
+      "sha": "eaf72c83a3b09ec2661e7d2c686fe6949208d44e",
+      "category": "fix",
+      "prompt_summary": "Fix Langfuse OTEL integration and architect agent bugs: fix span context inheritance so child spans link to parent traces, add core registry module for agent self-registration, fix Docker Compose network config for OTEL exporter endpoint",
+      "key_files": [
+        "agents/architect/agent.py",
+        "core/registry.py",
+        "docker-compose.yml"
+      ],
+      "session_title": "Thursday milestone build",
+      "milestone": "Thursday — OTEL + architect fixes"
+    }
+  ]
+}
