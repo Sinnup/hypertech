@@ -12,11 +12,13 @@ Why this shape:
 
 API notes (v4.8):
   - ``langfuse.decorators`` / ``langfuse_context`` do NOT exist in v4. Use the
-    client's ``update_current_generation`` / ``update_current_span`` /
-    ``set_current_trace_io`` instead.
+    client's ``update_current_generation`` / ``update_current_span`` instead.
   - Token usage goes in ``usage_details=`` (not ``usage=``).
-  - ``Langfuse.trace(...)`` does not exist in v4; use ``start_observation`` /
-    ``start_as_current_observation``.
+  - Trace I/O is set on the root observation directly — ``input=`` arg on
+    ``start_as_current_observation`` / ``update(output=...)`` on the yielded span.
+    ``set_current_trace_io`` is deprecated in v4.8+.
+  - For trace attributes (user_id, session_id, tags), use
+    ``client.propagate_attributes()`` context manager.
 """
 
 import os
@@ -67,28 +69,30 @@ def pipeline_trace(ticket_id: str, prompt: str, scenario: str = None):
         return
 
     trace_id = client.create_trace_id(seed=ticket_id)
+    # Setting input= on the root observation automatically surfaces it
+    # as trace-level input (v4 default behaviour).
     with client.start_as_current_observation(
         name="pipeline-run",
         trace_context={"trace_id": trace_id},
         input={"prompt": prompt},
         metadata={"ticket_id": ticket_id, "scenario": scenario},
     ) as span:
-        # Surface input at the trace level too (not just the root span).
-        client.set_current_trace_io(input={"prompt": prompt})
         yield span
 
 
 def record_pipeline_output(output: dict):
     """
-    Record the final pipeline output on the root span and trace.
+    Record the final pipeline output on the root span.
     Must be called while still inside ``pipeline_trace`` (i.e. before the
     context manager exits) so the current observation is the root span.
+
+    The root observation's output automatically becomes trace-level output
+    in Langfuse v4 — no separate ``set_current_trace_io`` call needed.
     """
     client = get_client()
     if not client:
         return
     client.update_current_span(output=output)
-    client.set_current_trace_io(output=output)
 
 
 def flush(timeout: float = 10.0):
