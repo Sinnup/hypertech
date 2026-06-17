@@ -51,6 +51,7 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 
 ## Key Conventions
 
+- **Q&A mode**: When the user asks a question, ONLY answer — no file creation, no implementation, no side effects. Wait for "proceed", "go ahead", "do it", or similar before acting.
 - **State**: TypedDict `PipelineState` in `core/state/pipeline_state.py` — all agents read/write it
 - **Tracing**: v4.8.1 OTEL-based — `@observe` on agents, `pipeline_trace()` root span in `main.py`
 - **Parsing**: `core/ai/parsing.py` handles ``` fences and `<think>` blocks
