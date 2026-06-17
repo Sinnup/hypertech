@@ -31,7 +31,7 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-@observe(name="intent-classifier", as_type="generation")
+@observe(name="intent-classifier")
 def classify(prompt: str, ticket_id: str = None) -> dict:
     client = get_client()
     if client:

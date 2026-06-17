@@ -68,7 +68,7 @@ def _github_commit(token: str, repo: str, ticket_id: str, filename: str, content
     return f"https://github.com/{owner}/{repo_name}/tree/{branch}"
 
 
-@observe(name="generate-poc", as_type="generation")
+@observe(name="generate-poc")
 def _generate_html(prompt: str) -> str:
     llm = get_llm(tier=ModelTier.BALANCED, temperature=0.3)
     chain = _PROMPT | llm
