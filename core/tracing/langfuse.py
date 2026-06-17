@@ -133,10 +133,11 @@ def get_token_usage(result) -> dict[str, int]:
 
 def record_generation(model: str, result, output: str = None):
     """
-    Record an LLM generation on the current Langfuse span.
+    Create a generation observation on the current Langfuse span.
 
-    Extracts token counts from *result* (an ``LLMResult`` or message) and
-    records them along with the model name so cost tracking works.
+    Uses ``start_as_current_observation(as_type="generation")`` to create a
+    proper generation (not a span) so Langfuse can calculate cost from the
+    model name × token count.
 
     Usage inside an agent::
 
@@ -148,11 +149,15 @@ def record_generation(model: str, result, output: str = None):
     if not client:
         return
     usage = get_token_usage(result)
-    client.update_current_generation(
+    with client.start_as_current_observation(
+        as_type="generation",
+        name="llm-generation",
         model=model,
+        input=result.prompt if hasattr(result, "prompt") else None,
         output=output or getattr(result, "content", ""),
         usage_details=usage,
-    )
+    ):
+        pass  # observation auto-closes — cost calculated on exit
 
 
 def sum_token_usage(*results) -> dict[str, int]:
