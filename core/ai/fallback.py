@@ -86,10 +86,17 @@ def override_provider(provider: str | None):
     """Temporarily set the active provider (thread-safe).
 
     Used by Slack's ``/switch-provider`` command. Set to ``None`` to clear.
+    Updates both the in-memory override AND ``os.environ["AI_PROVIDER"]`` so
+    that ``factory.get_provider()`` (which reads the env var directly) also
+    picks up the switch.
     """
     global _override_provider
     with _override_lock:
         _override_provider = provider
+        if provider:
+            os.environ["AI_PROVIDER"] = provider
+        else:
+            os.environ.pop("AI_PROVIDER", None)
 
 
 def current_provider() -> str:
@@ -133,15 +140,20 @@ class _FallbackChatModel(BaseChatModel):
         if provider not in self._cache:
             from core.ai.factory import get_llm as _factory_get_llm
 
+            old_provider = os.environ.pop("AI_PROVIDER", None)
+            old_fb = os.environ.pop("PROVIDER_FALLBACK_ENABLED", None)
             os.environ["AI_PROVIDER"] = provider
-            old = os.environ.pop("PROVIDER_FALLBACK_ENABLED", None)
             try:
                 self._cache[provider] = _factory_get_llm(
                     self._tier, self._temperature, self._max_tokens
                 )
             finally:
-                if old is not None:
-                    os.environ["PROVIDER_FALLBACK_ENABLED"] = old
+                if old_provider is not None:
+                    os.environ["AI_PROVIDER"] = old_provider
+                else:
+                    os.environ.pop("AI_PROVIDER", None)
+                if old_fb is not None:
+                    os.environ["PROVIDER_FALLBACK_ENABLED"] = old_fb
         return self._cache[provider]
 
     def _try_generate(self, messages, stop, run_manager, **kwargs):
@@ -225,16 +237,29 @@ def get_llm_with_fallback(
         return _get_llm(tier, temperature, max_tokens)
 
     chain = _fallback_order()
+    # Respect /switch-provider overrides: put the active provider first
+    # so it's tried before the default fallback order.
+    active = current_provider()  # checks _override_provider, then env
+    if active in chain and active != chain[0]:
+        chain = [active] + [p for p in chain if p != active]
+
     # Pre-build the primary LLM so normal-case has no extra latency.
     # Fallback providers are built lazily on first failure.
     primary = chain[0]
+    # Save/restore AI_PROVIDER so /switch-provider overrides survive pipeline init.
+    old_provider = os.environ.pop("AI_PROVIDER", None)
+    old_fb = os.environ.pop("PROVIDER_FALLBACK_ENABLED", None)
     os.environ["AI_PROVIDER"] = primary
-    old = os.environ.pop("PROVIDER_FALLBACK_ENABLED", None)
     try:
         primary_llm = _get_llm(tier, temperature, max_tokens)
     finally:
-        if old is not None:
-            os.environ["PROVIDER_FALLBACK_ENABLED"] = old
+        # Restore the original provider (or the override set by /switch-provider)
+        if old_provider is not None:
+            os.environ["AI_PROVIDER"] = old_provider
+        else:
+            os.environ.pop("AI_PROVIDER", None)
+        if old_fb is not None:
+            os.environ["PROVIDER_FALLBACK_ENABLED"] = old_fb
 
     llm_chain: list[tuple[str, BaseChatModel]] = [(primary, primary_llm)]
     for provider in chain[1:]:
@@ -283,15 +308,22 @@ def notify_health_check():
     providers_to_check = _fallback_order()
     status_lines: list[str] = []
 
-    for provider in providers_to_check:
-        try:
-            os.environ["AI_PROVIDER"] = provider
-            # Just instantiate — if keys are missing/bad, this will raise
-            from core.ai.factory import get_llm as _get_llm
-            _get_llm(ModelTier.FAST)
-            status_lines.append(f"  ✅ `{provider}` — OK")
-        except Exception as e:
-            status_lines.append(f"  ❌ `{provider}` — {e}")
+    old_provider = os.environ.pop("AI_PROVIDER", None)
+    try:
+        for provider in providers_to_check:
+            try:
+                os.environ["AI_PROVIDER"] = provider
+                # Just instantiate — if keys are missing/bad, this will raise
+                from core.ai.factory import get_llm as _get_llm
+                _get_llm(ModelTier.FAST)
+                status_lines.append(f"  ✅ `{provider}` — OK")
+            except Exception as e:
+                status_lines.append(f"  ❌ `{provider}` — {e}")
+    finally:
+        if old_provider is not None:
+            os.environ["AI_PROVIDER"] = old_provider
+        else:
+            os.environ.pop("AI_PROVIDER", None)
 
     try:
         from core.notifications import slack

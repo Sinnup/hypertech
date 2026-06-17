@@ -157,7 +157,7 @@ def _handle_switch_provider(text: str, user_id: str):
     )
     return jsonify({
         "text": f"✅ Provider switched: `{previous}` → `{target}`. "
-                f"Note: this only affects the current process."
+                f"All subsequent `/new` runs will use `{target}`."
     }), 200
 
 
