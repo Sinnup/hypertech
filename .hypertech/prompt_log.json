@@ -157,6 +157,31 @@
       ],
       "session_title": "DeepSeek AI provider support",
       "milestone": "post-sprint — multi-provider AI"
+    },
+    {
+      "id": "ht-010",
+      "date": "2026-06-17",
+      "sha": "d16d818535b4f52eace0784b4dbb40a0c6c9ad07",
+      "category": "feature",
+      "prompt_summary": "HT-009 follow-up: add provider auto-fallback (_FallbackChatModel wrapper intercepts 401/403/429/timeout and retries with next provider), Slack notifications on fallback, runtime /switch-provider command, DeepSeek model pricing + universal token extraction for Langfuse tracing, _stream and _agenerate fallback support, Langfuse v4.8.1 OTEL fixes (Redis + worker in docker-compose, start_as_current_observation for generation recording), remove redundant as_type='generation', add project infrastructure (CLAUDE.md, .claude/agents/, .claude/skills.md), untrack feature-registry.json, comprehensive changelogs for HT-009 and HT-8BD7F4",
+      "key_files": [
+        "core/ai/fallback.py",
+        "core/ai/factory.py",
+        "core/ai/seed_models.py",
+        "core/tracing/langfuse.py",
+        "core/notifications/slack_commands.py",
+        "docker-compose.yml",
+        "CLAUDE.md",
+        ".claude/agents/architect.md",
+        ".claude/agents/developer.md",
+        ".claude/agents/qa.md",
+        ".claude/agents/versioning.md",
+        ".claude/skills.md",
+        "changelogs/HT-009.md",
+        "changelogs/HT-8BD7F4.md"
+      ],
+      "session_title": "HT-009 polish — fallback, tracing, documentation",
+      "milestone": "post-sprint — provider fallback + project infra"
     }
   ]
 }
