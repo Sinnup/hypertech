@@ -8,7 +8,6 @@ Returns HLD that feeds into coder and infra agents for production/internal paths
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
@@ -16,18 +15,9 @@ from langfuse import observe
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get, get_optional
+from core.secrets.loader import get
 from core.tracing.langfuse import get_client
-
-_REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
-
-
-def _update_registry(ticket_id: str, updates: dict):
-    registry = json.loads(_REGISTRY_PATH.read_text()) if _REGISTRY_PATH.exists() else {}
-    if ticket_id in registry:
-        registry[ticket_id].update(updates)
-        registry[ticket_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
-        _REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
+import core.registry as registry_store
 
 
 _SYSTEM = """You are a senior software architect for a Mexican fintech company.
@@ -74,14 +64,13 @@ def run(state: PipelineState) -> PipelineState:
     llm = ChatAnthropic(
         model="claude-opus-4-8",
         anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0.2,
-        max_tokens=4096,
+        max_tokens=8192,
     )
     chain = _PROMPT | llm
     result = chain.invoke({
         "prompt": prompt,
         "scenario": scenario,
-        "compliance_json": json.dumps(compliance, indent=2)[:3000],
+        "compliance_json": json.dumps(compliance, indent=2)[:2000],
         "screen_names": ", ".join(screen_names) or "not yet defined",
     })
     content = result.content.strip()
@@ -91,13 +80,30 @@ def run(state: PipelineState) -> PipelineState:
             content = content[4:]
         content = content.rsplit("```", 1)[0].strip()
 
-    hld = json.loads(content)
+    try:
+        hld = json.loads(content)
+    except json.JSONDecodeError:
+        # Truncated output — build a minimal HLD so the pipeline continues
+        hld = {
+            "title": f"HLD for {prompt[:60]}",
+            "tech_stack": {"frontend": "React Native", "backend": "Python/FastAPI", "database": "PostgreSQL", "infra": "Docker/ECS"},
+            "components": [{"name": "Core", "responsibility": "Main app logic", "technology": "Python"}],
+            "data_model": [],
+            "integrations": [],
+            "security_controls": [],
+            "deployment": {"strategy": "containerized", "environment": "local", "notes": ""},
+            "compliance_summary": "See compliance report",
+            "open_questions": ["Full HLD generation failed — increase max_tokens or simplify prompt"],
+            "human_approval_required": True,
+            "_parse_error": True,
+        }
+        slack.status(ticket_id, "⚠️ Architect: HLD JSON truncated — using minimal fallback. Human review required.")
 
     usage = result.usage_metadata or {}
     client = get_client()
     if client:
         client.update_current_generation(
-            model="claude-opus-4-8",
+            model="claude-opus-4-6",
             output={"components": len(hld.get("components", []))},
             usage_details={
                 "input": usage.get("input_tokens", 0),
@@ -120,7 +126,7 @@ def run(state: PipelineState) -> PipelineState:
         )
         slack.approval_request(ticket_id, stage="hld_review", summary=summary)
 
-    _update_registry(ticket_id, {
+    registry_store.update_ticket(ticket_id, {
         "status": "hld_ready",
         "agents_involved": ["orchestrator", "ba_compliance", "ux_ui", "architect"],
     })
