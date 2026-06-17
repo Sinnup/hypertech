@@ -1,14 +1,12 @@
 """
 Intent classifier — reads a human prompt and returns scenario + starting agent.
-Uses Claude Haiku (cheapest) since this is a simple classification task.
+Uses the FAST model tier (cheapest) since this is a simple classification task.
 """
 
-import json
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
-from core.secrets.loader import get
-from core.tracing.langfuse import get_client
+from core.ai import get_llm, get_model_id, parse_json, ModelTier
+from core.tracing.langfuse import get_client, record_generation
 
 _SYSTEM = """You are the intent classifier for an agentic software development system.
 Given a human prompt, return a JSON object with exactly these fields:
@@ -33,39 +31,19 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-@observe(name="intent-classifier", as_type="generation")
+@observe(name="intent-classifier")
 def classify(prompt: str, ticket_id: str = None) -> dict:
     client = get_client()
     if client:
         client.update_current_generation(
             input={"prompt": prompt},
-            metadata={"model": "claude-haiku-4-5-20251001", "agent": "orchestrator"},
+            metadata={"model": get_model_id(ModelTier.FAST), "agent": "orchestrator"},
         )
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0,
-    )
+    llm = get_llm(tier=ModelTier.FAST, temperature=0)
     chain = _PROMPT | llm
     result = chain.invoke({"prompt": prompt})
-    content = result.content.strip()
-    if content.startswith("```"):
-        content = content.split("```", 2)[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.rsplit("```", 1)[0].strip()
+    parsed = parse_json(result.content)
 
-    parsed = json.loads(content)
-
-    usage = result.usage_metadata or {}
-    if client:
-        client.update_current_generation(
-            output=parsed,
-            model="claude-haiku-4-5-20251001",
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.FAST), result, output=parsed)
     return parsed

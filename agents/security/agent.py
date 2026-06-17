@@ -12,14 +12,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
+from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get, get_optional
-from core.tracing.langfuse import get_client
+from core.secrets.loader import get_optional
+from core.tracing.langfuse import get_client, record_generation
 
 _REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 _MAX_ITERATIONS = int(get_optional("MAX_SECURITY_ITERATIONS", "3"))
@@ -116,38 +116,15 @@ def run(state: PipelineState) -> PipelineState:
         slack.status(ticket_id, "🔎 Semgrep: no findings (or not installed) — LLM review only...")
 
     # LLM security review
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0,
-        max_tokens=2048,
-    )
+    llm = get_llm(tier=ModelTier.BALANCED, temperature=0, max_tokens=2048)
     chain = _REVIEW_PROMPT | llm
     result = chain.invoke({
         "filename": filename,
         "code": code[:6000],
         "semgrep_json": json.dumps(semgrep_findings[:20], indent=2),
     })
-    content = result.content.strip()
-    if content.startswith("```"):
-        content = content.split("```", 2)[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.rsplit("```", 1)[0].strip()
-
-    report = json.loads(content)
-
-    usage = result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model="claude-sonnet-4-6",
-            output={"overall_risk": report.get("overall_risk"), "findings": len(report.get("findings", []))},
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    report = parse_json(result.content)
+    record_generation(get_model_id(ModelTier.BALANCED), result, output={"overall_risk": report.get("overall_risk"), "findings": len(report.get("findings", []))})
 
     risk = report.get("overall_risk", "unknown")
     findings = report.get("findings", [])

@@ -12,11 +12,13 @@ Why this shape:
 
 API notes (v4.8):
   - ``langfuse.decorators`` / ``langfuse_context`` do NOT exist in v4. Use the
-    client's ``update_current_generation`` / ``update_current_span`` /
-    ``set_current_trace_io`` instead.
+    client's ``update_current_generation`` / ``update_current_span`` instead.
   - Token usage goes in ``usage_details=`` (not ``usage=``).
-  - ``Langfuse.trace(...)`` does not exist in v4; use ``start_observation`` /
-    ``start_as_current_observation``.
+  - Trace I/O is set on the root observation directly — ``input=`` arg on
+    ``start_as_current_observation`` / ``update(output=...)`` on the yielded span.
+    ``set_current_trace_io`` is deprecated in v4.8+.
+  - For trace attributes (user_id, session_id, tags), use
+    ``client.propagate_attributes()`` context manager.
 """
 
 import os
@@ -67,28 +69,110 @@ def pipeline_trace(ticket_id: str, prompt: str, scenario: str = None):
         return
 
     trace_id = client.create_trace_id(seed=ticket_id)
+    # Setting input= on the root observation automatically surfaces it
+    # as trace-level input (v4 default behaviour).
     with client.start_as_current_observation(
         name="pipeline-run",
         trace_context={"trace_id": trace_id},
         input={"prompt": prompt},
         metadata={"ticket_id": ticket_id, "scenario": scenario},
     ) as span:
-        # Surface input at the trace level too (not just the root span).
-        client.set_current_trace_io(input={"prompt": prompt})
         yield span
 
 
 def record_pipeline_output(output: dict):
     """
-    Record the final pipeline output on the root span and trace.
+    Record the final pipeline output on the root span.
     Must be called while still inside ``pipeline_trace`` (i.e. before the
     context manager exits) so the current observation is the root span.
+
+    The root observation's output automatically becomes trace-level output
+    in Langfuse v4 — no separate ``set_current_trace_io`` call needed.
     """
     client = get_client()
     if not client:
         return
     client.update_current_span(output=output)
-    client.set_current_trace_io(output=output)
+
+
+def get_token_usage(result) -> dict[str, int]:
+    """
+    Extract input/output token counts from an LLM result.
+
+    Uses LangChain's standardized ``usage_metadata`` that works across
+    all providers (Anthropic, DeepSeek, OpenAI).  Falls back to
+    ``response_metadata.token_usage`` for raw provider keys.
+    """
+    # Primary: LangChain-standard usage_metadata (works on all providers)
+    if hasattr(result, "usage_metadata") and result.usage_metadata:
+        return {
+            "input": result.usage_metadata.get("input_tokens", 0),
+            "output": result.usage_metadata.get("output_tokens", 0),
+        }
+
+    # Fallback: raw provider metadata
+    usage = (result.response_metadata or {}).get("token_usage", {})
+    if usage:
+        return {
+            "input": (
+                usage.get("input_tokens")
+                or usage.get("prompt_tokens")
+                or usage.get("inputTokenCount")
+                or 0
+            ),
+            "output": (
+                usage.get("output_tokens")
+                or usage.get("completion_tokens")
+                or usage.get("outputTokenCount")
+                or 0
+            ),
+        }
+
+    return {"input": 0, "output": 0}
+
+
+def record_generation(model: str, result, output: str = None):
+    """
+    Create a generation observation on the current Langfuse span.
+
+    Uses ``start_as_current_observation(as_type="generation")`` to create a
+    proper generation (not a span) so Langfuse can calculate cost from the
+    model name × token count.
+
+    Usage inside an agent::
+
+        llm = get_llm(tier)
+        result = llm.invoke(prompt)
+        record_generation(get_model_id(tier), result, output=result.content)
+    """
+    client = get_client()
+    if not client:
+        return
+    usage = get_token_usage(result)
+    with client.start_as_current_observation(
+        as_type="generation",
+        name="llm-generation",
+        model=model,
+        input=result.prompt if hasattr(result, "prompt") else None,
+        output=output or getattr(result, "content", ""),
+        usage_details=usage,
+    ):
+        pass  # observation auto-closes — cost calculated on exit
+
+
+def sum_token_usage(*results) -> dict[str, int]:
+    """
+    Sum token counts from multiple LLM results.  Useful for agents that make
+    multiple LLM calls and want to report combined usage.
+
+    Returns ``{"input": N, "output": M}``.
+    """
+    total_in, total_out = 0, 0
+    for r in results:
+        u = get_token_usage(r)
+        total_in += u["input"]
+        total_out += u["output"]
+    return {"input": total_in, "output": total_out}
 
 
 def flush(timeout: float = 10.0):

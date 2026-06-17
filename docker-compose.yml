@@ -13,7 +13,7 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
 
-  # ── Langfuse database (Postgres) ──────────────────────────
+  # ── Postgres (Langfuse transactional DB) ──────────────────
   langfuse-db:
     image: postgres:15-alpine
     container_name: hypertech-langfuse-db
@@ -27,10 +27,12 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: langfuse
+      TZ: UTC
+      PGTZ: UTC
     volumes:
       - langfuse_postgres:/var/lib/postgresql/data
 
-  # ── ClickHouse (trace storage for Langfuse v3) ────────────
+  # ── ClickHouse (OLAP trace storage) ───────────────────────
   langfuse-clickhouse:
     image: clickhouse/clickhouse-server:24.6-alpine
     container_name: hypertech-langfuse-clickhouse
@@ -50,7 +52,25 @@ services:
       retries: 20
       start_period: 30s
 
-  # ── MinIO (S3-compatible event storage for Langfuse v3) ───
+  # ── Redis (BullMQ ingestion queue — REQUIRED for traces) ─
+  redis:
+    image: redis:7-alpine
+    container_name: hypertech-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_AUTH:-myredissecret}
+      --maxmemory-policy noeviction
+      --save 60 1
+    volumes:
+      - langfuse_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--pass", "$${REDIS_AUTH:-myredissecret}", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  # ── MinIO (S3-compatible event/blob storage) ──────────────
   langfuse-minio:
     image: minio/minio:latest
     container_name: hypertech-langfuse-minio
@@ -83,12 +103,14 @@ services:
       "
     restart: "no"
 
-  # ── Langfuse server v3 ────────────────────────────────────
+  # ── Langfuse web server ────────────────────────────────────
   langfuse-server:
     image: langfuse/langfuse:3
     container_name: hypertech-langfuse
     depends_on:
       langfuse-db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       langfuse-clickhouse:
         condition: service_healthy
@@ -97,22 +119,105 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # ── Essentials ──
       DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: hypertech-local-secret
+      SALT: hypertech-local-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+
+      # ── ClickHouse ──
       CLICKHOUSE_URL: http://langfuse-clickhouse:8123
       CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
       CLICKHOUSE_USER: clickhouse
       CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+      # ── Redis / BullMQ (ingestion queue) ──
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: myredissecret
+      LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
+
+      # ── S3 / MinIO event upload ──
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-      NEXTAUTH_SECRET: hypertech-local-secret
-      SALT: hypertech-local-salt
-      NEXTAUTH_URL: http://localhost:3000
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+
+      # ── S3 / MinIO media upload ──
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+
+      # ── Misc ──
       TELEMETRY_ENABLED: "false"
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+    restart: unless-stopped
+
+  # ── Langfuse async worker (processes traces into ClickHouse)
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: hypertech-langfuse-worker
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+      langfuse-minio-init:
+        condition: service_completed_successfully
+    environment:
+      # ── Essentials ──
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: hypertech-local-salt
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+
+      # ── ClickHouse ──
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+
+      # ── Redis / BullMQ ──
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: myredissecret
+      LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK: "false"
+
+      # ── S3 / MinIO event upload ──
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+
+      # ── S3 / MinIO media upload ──
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse-events
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minioadmin
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: minioadmin
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+
+      # ── Ingestion tuning ──
+      LANGFUSE_INGESTION_QUEUE_DELAY_MS: "500"
+      LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS: "5000"
     restart: unless-stopped
 
 volumes:
@@ -120,3 +225,4 @@ volumes:
   langfuse_postgres:
   langfuse_clickhouse:
   langfuse_minio:
+  langfuse_redis:

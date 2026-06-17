@@ -22,6 +22,7 @@ from flask import Flask, request, jsonify, abort
 from core.secrets.loader import get, get_optional
 from core.notifications import slack
 from ingestion.google_drive import ingest as drive_ingest
+from core.ai.fallback import override_provider, current_provider
 
 app = Flask(__name__)
 
@@ -61,6 +62,8 @@ def slack_commands():
         return _handle_reload_kb(user_id)
     if command == "/deploy":
         return _handle_deploy(text, user_id)
+    if command == "/switch-provider":
+        return _handle_switch_provider(text, user_id)
 
     return jsonify({"text": f"Unknown command: {command}"}), 200
 
@@ -118,6 +121,39 @@ def _handle_deploy(text: str, user_id: str):
     env = parts[1] if len(parts) > 1 else "local"
     slack.status(ticket_id, f"🚀 Deploy to *{env}* triggered by <@{user_id}>")
     return jsonify({"text": f"Deploy to `{env}` queued for {ticket_id}."}), 200
+
+
+def _handle_switch_provider(text: str, user_id: str):
+    """Switch the active AI provider at runtime. Usage: /switch-provider claude|deepseek"""
+    valid = {"claude", "deepseek"}
+    target = text.strip().lower()
+
+    if not target:
+        current = current_provider()
+        return jsonify({
+            "text": f"Current provider: `{current}`. "
+                    f"Valid options: {', '.join(sorted(valid))}. "
+                    f"Usage: `/switch-provider claude`"
+        }), 200
+
+    if target not in valid:
+        return jsonify({
+            "text": f"❌ Unknown provider `{target}`. Valid: {', '.join(sorted(valid))}"
+        }), 200
+
+    previous = current_provider()
+    override_provider(target)
+    slack.alert(
+        f"🔀 *Provider Switched*\n"
+        f"*From:* `{previous}` → *To:* `{target}`\n"
+        f"*By:* <@{user_id}>\n"
+        f"*Note:* All subsequent LLM calls in this session will use `{target}`.",
+        channel="#pipeline-alerts",
+    )
+    return jsonify({
+        "text": f"✅ Provider switched: `{previous}` → `{target}`. "
+                f"Note: this only affects the current process."
+    }), 200
 
 
 if __name__ == "__main__":

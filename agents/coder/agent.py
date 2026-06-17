@@ -10,14 +10,14 @@ import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
+from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
 
 _SYSTEM = """You are an expert software developer. Given a product description, generate a simple
@@ -68,27 +68,12 @@ def _github_commit(token: str, repo: str, ticket_id: str, filename: str, content
     return f"https://github.com/{owner}/{repo_name}/tree/{branch}"
 
 
-@observe(name="generate-poc", as_type="generation")
+@observe(name="generate-poc")
 def _generate_html(prompt: str) -> str:
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0.3,
-    )
+    llm = get_llm(tier=ModelTier.BALANCED, temperature=0.3)
     chain = _PROMPT | llm
     llm_result = chain.invoke({"prompt": prompt})
-    usage = llm_result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model="claude-sonnet-4-6",
-            input={"prompt": prompt},
-            output=llm_result.content,
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    record_generation(get_model_id(ModelTier.BALANCED), llm_result, output=llm_result.content)
     return llm_result.content
 
 
@@ -100,14 +85,7 @@ def run(state: PipelineState) -> PipelineState:
     slack.status(ticket_id, "💻 Coder agent started — generating POC prototype...")
 
     raw = _generate_html(prompt)
-    raw = raw.strip()
-    # Strip markdown code fences if LLM wrapped the output
-    if raw.startswith("```"):
-        raw = raw.split("```", 2)[1]
-        if raw.startswith("html"):
-            raw = raw[4:]
-        raw = raw.rsplit("```", 1)[0].strip()
-    html_code = raw
+    html_code = strip_fences(raw)
 
     slack.status(ticket_id, "✅ Code generated — committing to GitHub...")
 

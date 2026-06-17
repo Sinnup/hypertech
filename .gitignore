@@ -22,3 +22,10 @@ hypertech-links.md
 
 # Feature registry file lock (runtime artifact)
 features/feature-registry.lock
+
+# Pipeline runtime output
+features/feature-registry.json
+poc/
+*.html
+*.docx
+.hypertech/setup-branch-workflow.sh

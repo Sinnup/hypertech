@@ -1,6 +1,6 @@
 """
 PR Review agent — reviews generated code for style, architecture adherence,
-and naming conventions before the security scan. Uses Haiku (cheap, fast).
+and naming conventions before the security scan. Uses the FAST model tier.
 
 Runs on the feature branch committed by the coder agent.
 Returns a structured review report; blocks only on critical issues.
@@ -12,14 +12,14 @@ import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
+from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get, get_optional
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 
 _REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 
@@ -105,34 +105,11 @@ def run(state: PipelineState) -> PipelineState:
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
         return state
 
-    llm = ChatAnthropic(
-        model="claude-haiku-4-5-20251001",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0,
-        max_tokens=2048,
-    )
+    llm = get_llm(tier=ModelTier.FAST, temperature=0, max_tokens=2048)
     chain = _PROMPT | llm
     result = chain.invoke({"filename": filename, "code": code[:8000]})
-    content = result.content.strip()
-    if content.startswith("```"):
-        content = content.split("```", 2)[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.rsplit("```", 1)[0].strip()
-
-    review = json.loads(content)
-
-    usage = result.usage_metadata or {}
-    client = get_client()
-    if client:
-        client.update_current_generation(
-            model="claude-haiku-4-5-20251001",
-            output={"verdict": review.get("verdict")},
-            usage_details={
-                "input": usage.get("input_tokens", 0),
-                "output": usage.get("output_tokens", 0),
-            },
-        )
+    review = parse_json(result.content)
+    record_generation(get_model_id(ModelTier.FAST), result, output={"verdict": review.get("verdict")})
 
     verdict = review.get("verdict", "approved")
     issues = review.get("issues", [])
