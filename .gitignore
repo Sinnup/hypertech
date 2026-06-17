@@ -24,7 +24,6 @@ hypertech-links.md
 features/feature-registry.lock
 
 # Pipeline runtime output
-features/feature-registry.json
 poc/
 *.html
 *.docx

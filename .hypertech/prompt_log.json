@@ -182,6 +182,19 @@
       ],
       "session_title": "HT-009 polish — fallback, tracing, documentation",
       "milestone": "post-sprint — provider fallback + project infra"
+    },
+    {
+      "id": "ht-011",
+      "date": "2026-06-17",
+      "sha": null,
+      "category": "spec",
+      "prompt_summary": "HT-010 backlog entry: Slack-initiated pipeline via /new command. Add /new Slack slash command that lets team members kick off POC/internal/production pipeline runs directly from Slack — no CLI access needed. Async execution with immediate ticket ID response and completion notification.",
+      "key_files": [
+        "features/feature-registry.json",
+        "changelogs/HT-010.md"
+      ],
+      "session_title": "HT-010 backlog — Slack-initiated pipeline spec",
+      "milestone": "post-sprint — backlog grooming"
     }
   ]
 }

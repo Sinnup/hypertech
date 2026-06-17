@@ -1,0 +1,16 @@
+{
+  "HT-010": {
+    "title": "Slack-initiated pipeline — start POC/production runs from Slack via /new command",
+    "scenario": "infrastructure",
+    "status": "backlog",
+    "created": "2026-06-17T16:10:00.000000+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "slack_commands"
+    ],
+    "human_approvals": [],
+    "branch": null,
+    "changelog_ref": "changelogs/HT-010.md",
+    "last_updated": "2026-06-17T16:10:00.000000+00:00"
+  }
+}
