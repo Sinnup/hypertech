@@ -1,6 +1,6 @@
 """
 Architect agent — produces a High-Level Design (HLD) document as structured JSON.
-Uses Opus for deep architectural reasoning.
+Uses the POWERFUL model tier for deep architectural reasoning.
 
 Receives the compliance report + design brief from prior agents.
 Returns HLD that feeds into coder and infra agents for production/internal paths.
@@ -9,13 +9,12 @@ Returns HLD that feeds into coder and infra agents for production/internal paths
 import json
 from datetime import datetime, timezone
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
+from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get
 from core.tracing.langfuse import get_client
 import core.registry as registry_store
 
@@ -61,11 +60,7 @@ def run(state: PipelineState) -> PipelineState:
 
     screen_names = [s.get("name", "?") for s in design_brief.get("screens", [])]
 
-    llm = ChatAnthropic(
-        model="claude-opus-4-8",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        max_tokens=8192,
-    )
+    llm = get_llm(tier=ModelTier.POWERFUL, max_tokens=8192)
     chain = _PROMPT | llm
     result = chain.invoke({
         "prompt": prompt,
@@ -73,15 +68,9 @@ def run(state: PipelineState) -> PipelineState:
         "compliance_json": json.dumps(compliance, indent=2)[:2000],
         "screen_names": ", ".join(screen_names) or "not yet defined",
     })
-    content = result.content.strip()
-    if content.startswith("```"):
-        content = content.split("```", 2)[1]
-        if content.startswith("json"):
-            content = content[4:]
-        content = content.rsplit("```", 1)[0].strip()
 
     try:
-        hld = json.loads(content)
+        hld = parse_json(result.content)
     except json.JSONDecodeError:
         # Truncated output — build a minimal HLD so the pipeline continues
         hld = {
@@ -103,7 +92,7 @@ def run(state: PipelineState) -> PipelineState:
     client = get_client()
     if client:
         client.update_current_generation(
-            model="claude-opus-4-8",
+            model=get_model_id(ModelTier.POWERFUL),
             output={"components": len(hld.get("components", []))},
             usage_details={
                 "input": usage.get("input_tokens", 0),

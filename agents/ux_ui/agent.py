@@ -10,13 +10,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
+from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
-from core.secrets.loader import get
 from core.tracing.langfuse import get_client
 import core.registry as registry_store
 
@@ -58,16 +57,6 @@ _WIREFRAME_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```", 2)[1]
-        if text.startswith(("json", "html")):
-            text = text[4:]
-        text = text.rsplit("```", 1)[0].strip()
-    return text
-
-
 @observe(name="ux-ui-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
@@ -79,21 +68,16 @@ def run(state: PipelineState) -> PipelineState:
     requirements = [r["description"] for r in compliance.get("requirements", [])]
     compliance_status = compliance.get("overall_status", "unknown")
 
-    llm_sonnet = ChatAnthropic(
-        model="claude-sonnet-4-6",
-        anthropic_api_key=get("ANTHROPIC_API_KEY"),
-        temperature=0.4,
-    )
+    llm = get_llm(tier=ModelTier.BALANCED, temperature=0.4)
 
     # Step 1: Generate design brief JSON
-    brief_chain = _BRIEF_PROMPT | llm_sonnet
+    brief_chain = _BRIEF_PROMPT | llm
     brief_result = brief_chain.invoke({
         "prompt": prompt,
         "requirements": "\n".join(f"- {r}" for r in requirements) or "None specified",
         "compliance_status": compliance_status,
     })
-    brief_json_str = _strip_fences(brief_result.content)
-    design_brief = json.loads(brief_json_str)
+    design_brief = parse_json(brief_result.content)
 
     slack.status(
         ticket_id,
@@ -102,9 +86,9 @@ def run(state: PipelineState) -> PipelineState:
 
     # Step 2: Generate HTML wireframe
     slack.status(ticket_id, "🖼️ Generating HTML wireframe...")
-    wireframe_chain = _WIREFRAME_PROMPT | llm_sonnet
-    wireframe_result = wireframe_chain.invoke({"brief_json": brief_json_str})
-    wireframe_html = _strip_fences(wireframe_result.content)
+    wireframe_chain = _WIREFRAME_PROMPT | llm
+    wireframe_result = wireframe_chain.invoke({"brief_json": json.dumps(design_brief)})
+    wireframe_html = strip_fences(wireframe_result.content)
 
     # Save wireframe locally
     wireframe_path = Path(f"poc/{ticket_id}/wireframe.html")
@@ -116,7 +100,7 @@ def run(state: PipelineState) -> PipelineState:
     client = get_client()
     if client:
         client.update_current_generation(
-            model="claude-sonnet-4-6",
+            model=get_model_id(ModelTier.BALANCED),
             output={"screens": len(design_brief.get("screens", []))},
             usage_details={
                 "input": usage1.get("input_tokens", 0) + usage2.get("input_tokens", 0),
