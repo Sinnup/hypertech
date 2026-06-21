@@ -24,10 +24,12 @@ from flask import Flask, request, jsonify, abort
 
 from core.secrets.loader import get, get_optional
 from core.notifications import slack
+from core.server.viz_routes import viz_bp
 from ingestion.google_drive import ingest as drive_ingest
 from core.ai.fallback import override_provider, current_provider
 
 app = Flask(__name__)
+app.register_blueprint(viz_bp)
 
 _REGISTRY_PATH = Path(get_optional("FEATURE_REGISTRY_PATH", "features/feature-registry.json"))
 
@@ -46,7 +48,7 @@ def _verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool
 
 @app.before_request
 def verify_slack():
-    if request.path == "/slack/commands":
+    if request.path in ("/slack/commands", "/slack/interactive"):
         ts = request.headers.get("X-Slack-Request-Timestamp", "0")
         sig = request.headers.get("X-Slack-Signature", "")
         if not _verify_slack_signature(request.get_data(), ts, sig):
@@ -274,7 +276,97 @@ def _handle_new(text: str, user_id: str):
     }), 200
 
 
+# ---------------------------------------------------------------------------
+# Slack interactive message handler (approval buttons)
+# ---------------------------------------------------------------------------
+
+# In-memory approval events — keyed by (ticket_id, stage).
+# The circuit breaker polls these when waiting for human approval.
+_approval_events: dict[str, "threading.Event"] = {}
+_approval_results: dict[str, dict] = {}
+
+import threading
+
+
+def _approval_key(ticket_id: str, stage: str) -> str:
+    return f"{ticket_id}|{stage}"
+
+
+def register_approval_event(ticket_id: str, stage: str) -> threading.Event:
+    """Create an Event that the circuit breaker can wait on.
+    Returns the Event; set when Slack interactive handler receives the response.
+    """
+    key = _approval_key(ticket_id, stage)
+    evt = threading.Event()
+    _approval_events[key] = evt
+    return evt
+
+
+def get_approval_result(ticket_id: str, stage: str) -> dict | None:
+    """Return the approval result dict, or None if not yet received."""
+    key = _approval_key(ticket_id, stage)
+    return _approval_results.get(key)
+
+
+@app.route("/slack/interactive", methods=["POST"])
+def slack_interactive():
+    """Receive interactive message payloads from Slack (button clicks).
+
+    Slack sends the payload as a form-encoded ``payload`` parameter containing
+    a JSON string with ``type``, ``actions``, ``user``, etc.
+    """
+    payload_str = request.form.get("payload", "{}")
+    try:
+        payload = json.loads(payload_str)
+    except json.JSONDecodeError:
+        return jsonify({"text": "Invalid payload"}), 400
+
+    # Only handle block_actions (button clicks) for now
+    if payload.get("type") != "block_actions":
+        return "", 200
+
+    actions = payload.get("actions", [])
+    user = payload.get("user", {}).get("name", payload.get("user", {}).get("id", "unknown"))
+
+    for action in actions:
+        block_id = action.get("block_id", "")
+        value = action.get("value", "")
+
+        # Parse block_id: "approval_{ticket_id}_{stage}"
+        parts = block_id.split("_", 2)
+        if len(parts) >= 3 and parts[0] == "approval":
+            ticket_id = parts[1]
+            stage = parts[2]
+
+            result = {
+                "ticket_id": ticket_id,
+                "stage": stage,
+                "status": value,  # "approved", "changes_requested", "rejected"
+                "approved_by": user,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Store result
+            key = _approval_key(ticket_id, stage)
+            _approval_results[key] = result
+
+            # Unblock any waiting circuit breaker
+            evt = _approval_events.get(key)
+            if evt:
+                evt.set()
+
+            # Acknowledge in Slack
+            emoji = {"approved": "✅", "changes_requested": "🔄", "rejected": "❌"}.get(value, "❓")
+            slack.status(
+                ticket_id,
+                f"{emoji} *{stage}* — {value.upper()} by <@{user}>"
+            )
+
+    return "", 200
+
+
 if __name__ == "__main__":
     port = int(get_optional("SLACK_COMMANDS_PORT", "8080"))
-    print(f"Slack command server running on :{port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    print(f"\n📡 Slack command server → http://localhost:{port}/slack/commands")
+    print(f"📊 Viz dashboard       → http://localhost:{port}/viz\n")
+    app.run(host="0.0.0.0", port=port, debug=False)  # nosemgrep — required for ngrok tunnel
