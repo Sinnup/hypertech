@@ -39,6 +39,7 @@ class PipelineState(TypedDict):
     agent_messages: List[AgentMessage]
     coder_output: Optional[dict]
     design_brief: Optional[dict]
+    design_synthesis: Optional[dict]   # Phase 2: merged output from design_synthesizer
     hld_output: Optional[dict]
     compliance_report: Optional[dict]
     security_findings: Optional[dict]
@@ -89,6 +90,7 @@ def new_state(ticket_id: str, prompt: str) -> PipelineState:
         agent_messages=[],
         coder_output=None,
         design_brief=None,
+        design_synthesis=None,
         hld_output=None,
         compliance_report=None,
         security_findings=None,

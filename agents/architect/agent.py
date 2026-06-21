@@ -1,9 +1,10 @@
 """
-Architect agent — produces a High-Level Design (HLD) document as structured JSON.
+Architect agent — produces a High-Level Design (HLD) document as structured JSON
+plus a Mermaid C4/sequence diagram for Slack visualization and human review.
 Uses the POWERFUL model tier for deep architectural reasoning.
 
 Receives the compliance report + design brief from prior agents.
-Returns HLD that feeds into coder and infra agents for production/internal paths.
+Returns HLD + Mermaid diagram that feed into design_synthesizer and code agents.
 """
 
 import json
@@ -12,9 +13,10 @@ from datetime import datetime, timezone
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
 
-from core.ai import get_llm, get_model_id, parse_json, ModelTier
+from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry import register
+from core.agent_registry.models import AgentOutput
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
@@ -38,6 +40,15 @@ Given requirements, compliance report, and design brief, produce an HLD as JSON:
 Always set human_approval_required to true for production scenarios.
 Return raw JSON only, no markdown."""
 
+_MERMAID_SYSTEM = """You are a software architect. Given an HLD JSON, produce a Mermaid C4 component
+diagram that shows the main components and their relationships.
+
+Rules:
+- Use C4Context or C4Component syntax (C4 Mermaid).
+- If C4 is not ideal for this architecture, use a flowchart or sequenceDiagram instead.
+- Keep it concise — max 15 nodes.
+- Return ONLY the Mermaid code block (```mermaid ... ```), nothing else."""
+
 _PROMPT = ChatPromptTemplate.from_messages([
     ("system", _SYSTEM),
     ("human", (
@@ -46,6 +57,11 @@ _PROMPT = ChatPromptTemplate.from_messages([
         "Compliance report:\n{compliance_json}\n\n"
         "Design brief screens: {screen_names}"
     )),
+])
+
+_MERMAID_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _MERMAID_SYSTEM),
+    ("human", "HLD:\n{hld_json}"),
 ])
 
 
@@ -93,12 +109,19 @@ def run(state: PipelineState) -> PipelineState:
 
     record_generation(get_model_id(ModelTier.POWERFUL), result, output={"components": len(hld.get("components", []))})
 
+    # Generate Mermaid diagram using BALANCED tier (cheaper than POWERFUL)
+    mermaid_diagram = _generate_mermaid(hld, ticket_id)
+    hld["mermaid_diagram"] = mermaid_diagram
+
     slack.status(
         ticket_id,
         f"✅ HLD ready — {len(hld.get('components', []))} component(s), "
         f"stack: {hld.get('tech_stack', {}).get('backend', '?')} / "
         f"{hld.get('tech_stack', {}).get('frontend', '?')}"
     )
+
+    if mermaid_diagram:
+        slack.status(ticket_id, f"📐 Architecture diagram:\n```\n{mermaid_diagram[:800]}\n```")
 
     if hld.get("human_approval_required"):
         summary = (
@@ -110,18 +133,50 @@ def run(state: PipelineState) -> PipelineState:
 
     registry_store.update_ticket(ticket_id, {
         "status": "hld_ready",
-        "agents_involved": ["orchestrator", "ba_compliance", "ux_ui", "architect"],
+        "agents_involved": list(state.get("agent_outputs", {}).keys()) + ["architect"],
     })
+
+    # Determine next agent from plan or legacy routing
+    plan = state.get("agent_plan", [])
+    idx = state.get("agent_plan_index", 0)
+    next_agent = plan[idx] if plan and idx < len(plan) else "design_synthesizer"
 
     state["hld_output"] = hld
     state["current_agent"] = "architect"
-    state["next_agent"] = "pr_review"
+    state["next_agent"] = next_agent
     state["status"] = "hld_ready"
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+    state["agent_outputs"]["architect"] = AgentOutput(
+        status="ok",
+        data={"components": len(hld.get("components", [])), "has_diagram": bool(mermaid_diagram)},
+        confidence=0.90,
+        agent_name="architect",
+    ).model_dump()
+
     state["agent_messages"].append(
-        agent_message("architect", "pr_review", "hld_ready", ticket_id, {
+        agent_message("architect", next_agent, "hld_ready", ticket_id, {
             "components": len(hld.get("components", [])),
+            "has_mermaid": bool(mermaid_diagram),
         })
     )
 
     return state
+
+
+@observe(name="architect-mermaid")
+def _generate_mermaid(hld: dict, ticket_id: str) -> str:
+    """Generate a Mermaid diagram for the HLD. Returns empty string on failure."""
+    try:
+        llm = get_llm(tier=ModelTier.BALANCED, temperature=0.1, max_tokens=1024)
+        chain = _MERMAID_PROMPT | llm
+        result = chain.invoke({"hld_json": json.dumps(hld, indent=2)[:2000]})
+        diagram = strip_fences(result.content).strip()
+        if diagram.startswith("```"):
+            diagram = diagram[3:].strip()
+        if diagram.endswith("```"):
+            diagram = diagram[:-3].strip()
+        return diagram
+    except Exception as exc:
+        slack.status(ticket_id, f"⚠️ Mermaid diagram generation skipped: {exc}")
+        return ""

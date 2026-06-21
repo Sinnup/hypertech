@@ -85,7 +85,7 @@ def _ngrok_tunnel(port: int) -> str | None:
             return None
 
 
-@register("infra", description="Serves POC locally via HTTP server + ngrok tunnel",
+@register("infra", description="Serves POC locally via HTTP server + ngrok tunnel; handles mobile project artifacts",
           tier=ModelTier.FAST, tags=["deployment", "infrastructure"])
 @observe(name="infra-agent")
 def run(state: PipelineState) -> PipelineState:
@@ -94,14 +94,92 @@ def run(state: PipelineState) -> PipelineState:
 
     slack.status(ticket_id, "🏗️ Infra agent started — preparing local deployment...")
 
+    project_type = coder_output.get("project_type", "web")
+
+    if project_type == "android":
+        return _handle_android(state, ticket_id, coder_output)
+
+    if project_type == "backend":
+        return _handle_backend(state, ticket_id, coder_output)
+
+    return _handle_web(state, ticket_id, coder_output)
+
+
+def _handle_android(state: PipelineState, ticket_id: str, coder_output: dict) -> PipelineState:
+    """Post build instructions for Android project — no HTTP server needed."""
+    project_dir = coder_output.get("project_dir", "")
+    build_cmd = coder_output.get("build_cmd", "")
+    apk_path = coder_output.get("apk_path", "")
+    files = coder_output.get("files", [])
+
+    slack.status(ticket_id, f"📱 Android project at: `{project_dir}`")
+    slack.status(
+        ticket_id,
+        f"🔨 *Build APK:*\n```\n{build_cmd}\n```\n"
+        f"📲 *Install:*\n```\nadb install {apk_path}\n```\n"
+        f"📁 *Files generated:* {len(files)}"
+    )
+
+    _update_registry(ticket_id, {
+        "status": "deployed",
+        "project_dir": project_dir,
+    })
+
+    state["current_agent"] = "infra"
+    state["next_agent"] = None
+    state["status"] = "deployed"
+    state["deploy_url"] = f"file://{project_dir}"
+    state["last_updated"] = datetime.now(timezone.utc).isoformat()
+    state["agent_messages"].append(
+        agent_message("infra", "human", "deployed", ticket_id, {
+            "project_type": "android",
+            "project_dir": project_dir,
+            "build_cmd": build_cmd,
+        })
+    )
+
+    return state
+
+
+def _handle_backend(state: PipelineState, ticket_id: str, coder_output: dict) -> PipelineState:
+    """Post run instructions for FastAPI backend."""
+    project_dir = coder_output.get("project_dir", "")
+    run_cmd = coder_output.get("run_cmd", "")
+
+    slack.status(
+        ticket_id,
+        f"⚙️ *Backend project at:* `{project_dir}`\n"
+        f"*Run:*\n```\npip install -r {project_dir}/requirements.txt\n{run_cmd}\n```\n"
+        f"*Docs:* http://localhost:8000/docs"
+    )
+
+    _update_registry(ticket_id, {"status": "deployed", "project_dir": project_dir})
+
+    state["current_agent"] = "infra"
+    state["next_agent"] = None
+    state["status"] = "deployed"
+    state["deploy_url"] = "http://localhost:8000"
+    state["last_updated"] = datetime.now(timezone.utc).isoformat()
+    state["agent_messages"].append(
+        agent_message("infra", "human", "deployed", ticket_id, {
+            "project_type": "backend",
+            "project_dir": project_dir,
+            "run_cmd": run_cmd,
+        })
+    )
+
+    return state
+
+
+def _handle_web(state: PipelineState, ticket_id: str, coder_output: dict) -> PipelineState:
+    """Serve HTML prototype via HTTP + ngrok."""
     local_path = coder_output.get("local_path")
     if not local_path or not Path(local_path).exists():
-        # Fallback: look for the file in the standard poc/ location
-        fallback = Path(f"poc/{ticket_id}/index.html")
+        fallback = Path(f"poc/{state['ticket_id']}/index.html")
         if fallback.exists():
             local_path = str(fallback.resolve())
         else:
-            slack.status(ticket_id, "⚠️ Infra agent: no HTML file found — skipping deployment.")
+            slack.status(state["ticket_id"], "⚠️ Infra agent: no HTML file found — skipping deployment.")
             state["current_agent"] = "infra"
             state["next_agent"] = None
             state["status"] = "deploy_skipped"
@@ -114,10 +192,7 @@ def run(state: PipelineState) -> PipelineState:
 
     local_url = f"http://localhost:{port}/index.html"
     public_url = _ngrok_tunnel(port) or local_url
-    if public_url != local_url:
-        deploy_url = f"{public_url}/index.html"
-    else:
-        deploy_url = local_url
+    deploy_url = f"{public_url}/index.html" if public_url != local_url else local_url
 
     client = get_client()
     if client:
@@ -128,7 +203,7 @@ def run(state: PipelineState) -> PipelineState:
 
     _update_registry(ticket_id, {
         "status": "deployed",
-        "agents_involved": ["orchestrator", "coder", "infra"],
+        "agents_involved": list(state.get("agent_outputs", {}).keys()) + ["infra"],
         "deploy_url": deploy_url,
     })
 

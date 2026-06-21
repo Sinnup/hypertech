@@ -24,19 +24,31 @@ import core.registry as registry_store
 # ---------------------------------------------------------------------------
 
 _PLANS = {
-    "poc": ["orchestrator", "coder", "infra"],
-    "internal": ["orchestrator", "ba_compliance", "ux_ui"],
+    "poc": ["orchestrator", "coder", "infra"],       # overridden by specialization below
+    "internal": ["orchestrator", "ba_compliance", "ux_ui", "design_synthesizer"],
     "production": [
         "orchestrator", "ba_compliance", "ux_ui",
-        "architect", "pr_review", "security",
+        "architect", "design_synthesizer", "pr_review", "security",
     ],
 }
 
-# Keywords that signal a mobile app prompt (for demo scenario routing)
+# Keyword sets for prompt-based specialization
 _MOBILE_KEYWORDS = [
     "android", "ios", "mobile app", "apk", "react native",
     "kotlin", "swift", "flutter", "kmp", "jetpack compose",
     "tpv", "pos", "point of sale", "card payment", "payment terminal",
+    "terminal de pago", "cobro", "tarjeta",
+]
+
+_WEB_KEYWORDS = [
+    "website", "web app", "web application", "dashboard", "landing page",
+    "portal", "frontend", "react", "next.js", "vue", "html", "browser",
+    "spa", "pwa",
+]
+
+_BACKEND_KEYWORDS = [
+    "api", "rest api", "backend", "server", "microservice", "fastapi",
+    "endpoint", "database", "crud", "service", "worker",
 ]
 
 
@@ -135,26 +147,32 @@ def run(state: PipelineState) -> PipelineState:
 def _build_plan(scenario: str, prompt: str) -> list[str]:
     """Build the agent execution plan for this scenario.
 
-    Extends the static templates with dynamic detection:
-    - Mobile app prompts → include mobile-specific agents if registered
-    - Web app prompts → use vanilla JS for POC
+    For POC: detects mobile / web / backend keywords and routes to the
+    appropriate specialized code agent.  Falls back to the generic coder
+    when no keyword matches.
+
+    For internal/production: uses the enriched static templates (now include
+    design_synthesizer).
 
     The plan always starts with orchestrator.
     """
-    plan = list(_PLANS.get(scenario, _PLANS["poc"]))
-
-    # Check for mobile keywords
     prompt_lower = prompt.lower()
-    is_mobile = any(kw in prompt_lower for kw in _MOBILE_KEYWORDS)
 
-    if is_mobile and scenario == "poc":
-        # For a mobile POC, keep coder + infra — the coder will generate
-        # Android code instead of HTML.  The demo scenario (Android TPV)
-        # triggers this path naturally.
-        # Future: when mobile_specialist agent exists, insert it here.
-        pass
+    if scenario == "poc":
+        is_mobile = any(kw in prompt_lower for kw in _MOBILE_KEYWORDS)
+        is_web = any(kw in prompt_lower for kw in _WEB_KEYWORDS)
+        is_backend = any(kw in prompt_lower for kw in _BACKEND_KEYWORDS)
 
-    return plan
+        if is_mobile:
+            return ["orchestrator", "coder_mobile", "infra"]
+        if is_backend and not is_web:
+            return ["orchestrator", "coder_backend", "infra"]
+        if is_web:
+            return ["orchestrator", "coder_web", "infra"]
+        # Default POC fallback (generic HTML coder)
+        return list(_PLANS["poc"])
+
+    return list(_PLANS.get(scenario, _PLANS["poc"]))
 
 
 # ---------------------------------------------------------------------------
