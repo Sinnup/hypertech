@@ -8,6 +8,7 @@ Usage:
 Also importable — ``run_pipeline()`` is used by slack_commands for /new.
 """
 
+import os
 import sys
 import uuid
 import argparse
@@ -41,23 +42,47 @@ def run_pipeline(ticket_id: str, prompt: str) -> dict:
     from core.ai.seed_models import seed as seed_models
     seed_models()
 
+    # Start the viz server (daemon thread — idempotent, no-op if already running).
+    from core.server.viz_server import start_viz_server
+    start_viz_server()
+
     state = new_state(ticket_id=ticket_id, prompt=prompt)
     graph = build()
 
     from core.tracing.langfuse import pipeline_trace, record_pipeline_output, flush
-    with pipeline_trace(ticket_id, prompt):
-        result = graph.invoke(state)
+    from core.events.graph_events import stream_pipeline, emit_event
+    from datetime import datetime, timezone as tz
 
-        coder_out = result.get("coder_output") or {}
-        record_pipeline_output({
+    # With validation_gate + context_packer, each agent step is 3 graph nodes.
+    # A 7-agent production pipeline needs ~21 steps; set limit generously.
+    recursion_limit = int(os.getenv("PIPELINE_RECURSION_LIMIT", "35"))
+
+    try:
+        with pipeline_trace(ticket_id, prompt):
+            # LangGraph native streaming — emits viz events from each node chunk.
+            result = stream_pipeline(graph, state, ticket_id, recursion_limit=recursion_limit)
+
+            coder_out = result.get("coder_output") or {}
+            record_pipeline_output({
+                "status": result["status"],
+                "scenario": result["scenario"],
+                "branch_url": coder_out.get("branch_url"),
+                "deploy_url": result.get("deploy_url"),
+            })
+        flush()
+
+        emit_event(ticket_id, "pipeline_complete", {
             "status": result["status"],
-            "scenario": result["scenario"],
-            "branch_url": coder_out.get("branch_url"),
-            "deploy_url": result.get("deploy_url"),
+            "timestamp": datetime.now(tz.utc).isoformat(),
         })
-    flush()
+        return result
 
-    return result
+    except Exception as exc:
+        emit_event(ticket_id, "pipeline_error", {
+            "error": str(exc),
+            "timestamp": datetime.now(tz.utc).isoformat(),
+        })
+        raise
 
 
 def main():
@@ -75,6 +100,11 @@ def main():
     coder_out = result.get("coder_output") or {}
 
     print(f"\n✅ Pipeline complete | Status: {result['status']} | Scenario: {result['scenario']}")
+    if result.get("agent_plan"):
+        print(f"   📋 Plan: {' → '.join(result['agent_plan'])}")
+    if result.get("confidence_scores"):
+        scores = result["confidence_scores"]
+        print(f"   📊 Confidence: {', '.join(f'{k}={v:.0%}' for k, v in scores.items())}")
     if coder_out.get("branch_url"):
         print(f"   📦 Branch: {coder_out['branch_url']}")
     if result.get("compliance_report"):
@@ -83,6 +113,8 @@ def main():
     if result.get("design_brief"):
         screens = result["design_brief"].get("screens", [])
         print(f"   🎨 Design brief: {len(screens)} screen(s)")
+    if result.get("context_summaries"):
+        print(f"   📝 Context summaries: {len(result['context_summaries'])} agent(s)")
 
     deploy_url = result.get("deploy_url")
     if deploy_url:
