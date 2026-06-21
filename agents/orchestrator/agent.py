@@ -24,11 +24,18 @@ import core.registry as registry_store
 # ---------------------------------------------------------------------------
 
 _PLANS = {
-    "poc": ["orchestrator", "coder", "infra"],       # overridden by specialization below
-    "internal": ["orchestrator", "ba_compliance", "ux_ui", "design_synthesizer"],
+    # poc is fully overridden by _build_plan — this is just the generic fallback
+    "poc": ["orchestrator", "coder", "infra"],
+    # internal: BA → design → code → test → deploy
+    "internal": [
+        "orchestrator", "ba_compliance", "ux_ui",
+        "design_synthesizer", "{coder}", "test_generator", "infra",
+    ],
+    # production: full pipeline with review + security loops + CI/CD
     "production": [
         "orchestrator", "ba_compliance", "ux_ui",
-        "architect", "design_synthesizer", "pr_review", "security",
+        "architect", "design_synthesizer", "{coder}",
+        "pr_review", "security", "test_generator", "devops", "infra",
     ],
 }
 
@@ -147,32 +154,31 @@ def run(state: PipelineState) -> PipelineState:
 def _build_plan(scenario: str, prompt: str) -> list[str]:
     """Build the agent execution plan for this scenario.
 
-    For POC: detects mobile / web / backend keywords and routes to the
-    appropriate specialized code agent.  Falls back to the generic coder
-    when no keyword matches.
-
-    For internal/production: uses the enriched static templates (now include
-    design_synthesizer).
-
-    The plan always starts with orchestrator.
+    All scenarios use keyword-based coder selection.
+    POC: short path (code → infra only).
+    Internal: BA → design → code → test → infra.
+    Production: full pipeline with review + security + CI/CD loops.
     """
-    prompt_lower = prompt.lower()
+    coder = _pick_coder(prompt)
 
     if scenario == "poc":
-        is_mobile = any(kw in prompt_lower for kw in _MOBILE_KEYWORDS)
-        is_web = any(kw in prompt_lower for kw in _WEB_KEYWORDS)
-        is_backend = any(kw in prompt_lower for kw in _BACKEND_KEYWORDS)
+        return ["orchestrator", coder, "infra"]
 
-        if is_mobile:
-            return ["orchestrator", "coder_mobile", "infra"]
-        if is_backend and not is_web:
-            return ["orchestrator", "coder_backend", "infra"]
-        if is_web:
-            return ["orchestrator", "coder_web", "infra"]
-        # Default POC fallback (generic HTML coder)
-        return list(_PLANS["poc"])
+    # Expand the template — replace "{coder}" placeholder
+    template = list(_PLANS.get(scenario, _PLANS["poc"]))
+    return ["orchestrator"] + [coder if a == "{coder}" else a for a in template[1:]]
 
-    return list(_PLANS.get(scenario, _PLANS["poc"]))
+
+def _pick_coder(prompt: str) -> str:
+    """Select the right coder agent based on prompt keywords."""
+    p = prompt.lower()
+    if any(kw in p for kw in _MOBILE_KEYWORDS):
+        return "coder_mobile"
+    if any(kw in p for kw in _BACKEND_KEYWORDS) and not any(kw in p for kw in _WEB_KEYWORDS):
+        return "coder_backend"
+    if any(kw in p for kw in _WEB_KEYWORDS):
+        return "coder_web"
+    return "coder"
 
 
 # ---------------------------------------------------------------------------

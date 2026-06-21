@@ -32,9 +32,17 @@ _BASE_Y = 50
 _ROW_HEIGHT = 130
 _INFRA_ROW_OFFSET = 160  # extra space before infra nodes
 
-# Agent → column assignment (keeps the left/right split from the old layout)
-_LEFT_COLUMN = {"coder", "infra"}
-_RIGHT_COLUMN = {"ba_compliance", "ux_ui", "architect", "pr_review", "security"}
+# Agent → column assignment
+# Left: code-generation and deployment agents
+# Right: analysis, design, quality, and DevOps agents
+_LEFT_COLUMN = {
+    "coder", "coder_mobile", "coder_web", "coder_backend", "infra",
+    "test_generator", "devops",
+}
+_RIGHT_COLUMN = {
+    "ba_compliance", "ux_ui", "architect", "design_synthesizer",
+    "pr_review", "security",
+}
 
 
 def _build_graph_structure() -> dict:
@@ -122,11 +130,21 @@ def _build_graph_structure() -> dict:
     # human_escalation → END
     edges.append({"from": "human_escalation", "to": "__end__", "paths": [], "label": ""})
 
-    # -- Scenarios (dynamic — computed from agent_plan at runtime) -------------
+    # -- Scenarios (representative paths for dashboard highlighting) ----------
     scenarios = {
+        "poc_mobile": ["orchestrator", "coder_mobile", "infra"],
+        "poc_web": ["orchestrator", "coder_web", "infra"],
+        "poc_backend": ["orchestrator", "coder_backend", "infra"],
         "poc": ["orchestrator", "coder", "infra"],
-        "internal": ["orchestrator", "ba_compliance", "ux_ui"],
-        "production": ["orchestrator", "ba_compliance", "ux_ui", "architect", "pr_review", "security"],
+        "internal": [
+            "orchestrator", "ba_compliance", "ux_ui",
+            "design_synthesizer", "coder_web", "test_generator", "infra",
+        ],
+        "production": [
+            "orchestrator", "ba_compliance", "ux_ui", "architect",
+            "design_synthesizer", "coder_mobile",
+            "pr_review", "security", "test_generator", "devops", "infra",
+        ],
     }
 
     # Add all known agents as a "dynamic" scenario
@@ -141,13 +159,21 @@ def _label(agent_id: str) -> str:
     labels = {
         "orchestrator": "Orchestrator",
         "coder": "Coder",
-        "infra": "Infra",
+        "coder_mobile": "Coder (Mobile)",
+        "coder_web": "Coder (Web)",
+        "coder_backend": "Coder (Backend)",
+        "infra": "Infra / Deploy",
         "ba_compliance": "BA & Compliance",
         "ux_ui": "UX / UI",
         "architect": "Architect",
+        "design_synthesizer": "Design Synthesizer",
         "pr_review": "PR Review",
-        "security": "Security",
+        "security": "Security / OWASP",
+        "test_generator": "Test Generator",
+        "devops": "DevOps / CI-CD",
         "context_packer": "Context Packer",
+        "validation_gate": "Validation Gate",
+        "human_escalation": "Human Escalation",
     }
     return labels.get(agent_id, agent_id.replace("_", " ").title())
 

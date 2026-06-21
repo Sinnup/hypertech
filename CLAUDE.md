@@ -1,12 +1,10 @@
 # Hypertech — Agentic SDLC Pipeline
 
-AI-driven software delivery pipeline: prompt → requirements → design → code → deploy.
-POC validated. **Phase 1 foundation complete** — building Phase 2 (specialized agents) next.
+AI-driven software delivery pipeline: prompt → requirements → design → code → test → deploy.
+**Phases 1–4 complete. 17 agents registered.**
 
-> **🔄 ACTIVE HANDOFF:** Read `docs/session-handoff-2026-06-20.md` FIRST.
-> All 10 pending questions answered (Section 7). Deadline: Monday June 23, 2026 at 4 PM.
-> **Demo:** Android TPV app — simulate card payment with button press, APK delivered locally.
-> Memory: [[session-handoff-2026-06-20]] · [[project_context]]
+> **Demo:** `python main.py "Build an Android TPV app. Button press simulates card insertion → payment processed. APK delivered locally."`
+> Memory: [[session-handoff-2026-06-21]] · [[project_context]]
 
 ## Quick Reference
 
@@ -14,46 +12,87 @@ POC validated. **Phase 1 foundation complete** — building Phase 2 (specialized
 - **Slack**: `python -m core.notifications.slack_commands`
 - **Langfuse**: http://localhost:3000 (see [[langfuse-v4-tracing]] for API gotchas)
 - **ChromaDB**: http://localhost:8000
-- **Viz Dashboard**: http://localhost:8080/viz (included in Slack command server; see `docs/viz-setup.md`)
+- **Viz Dashboard**: http://localhost:8080/viz (included in Slack command server)
 - **ngrok domain**: `unplug-active-observing.ngrok-free.dev` (set via `NGROK_DOMAIN` in `.env`)
 - **Slack interactive**: `/slack/interactive` endpoint handles approval button clicks
 
-## Architecture (Phase 1)
+## Architecture (Phases 1–4)
 
 ```
 main.py
   └─ LangGraph workflow (core/graph/workflow.py) — dynamic, agent-plan-driven
        │
-       ├─ orchestrator (FAST)       — intent → scenario → dynamic agent_plan
-       │                                  demo mode: asks clarifying questions via Slack
-       ├─ validation_gate           — checks confidence after every agent
+       ├─ orchestrator (FAST)         — intent → scenario → dynamic agent_plan
+       │                                   keyword routing: mobile/web/backend/generic
+       │                                   demo mode: Slack clarifying questions
+       ├─ validation_gate             — confidence check after every agent
        │     ├─ ≥ 60% → context_packer
        │     └─ < 60% or failed → human_escalation → END
-       ├─ context_packer (FAST)     — compresses agent output → bullet points
-       │     visible graph node — "all steps must be visible"
+       ├─ context_packer (FAST)       — compresses output → bullet points (visible node)
        │
-       ├─ coder (BALANCED)          — HTML/POC code + GitHub (circuit breaker protected)
-       ├─ infra (no LLM)            — HTTP server + ngrok
-       ├─ ba_compliance (BALANCED)  — requirements + ChromaDB RAG (circuit breaker protected)
-       ├─ ux_ui (BALANCED)          — design brief + wireframe
-       ├─ architect (POWERFUL)      — HLD + Slack HitL approval
-       ├─ pr_review (FAST)          — code style + architecture review
-       └─ security (BALANCED)       — Semgrep + LLM review + Slack alerts
+       ├─ [Analysis / Design — right column]
+       │   ├─ ba_compliance (BALANCED) — ChromaDB RAG, EMV/CNBV/LACP compliance check
+       │   ├─ ux_ui (BALANCED)         — design brief JSON + HTML wireframe
+       │   ├─ architect (POWERFUL)     — HLD JSON + Mermaid diagram + Slack HitL approval
+       │   └─ design_synthesizer (BALANCED) — merges BA+Architect+UX/UI → unified brief
+       │
+       ├─ [Code Generation — left column]
+       │   ├─ coder_mobile (BALANCED) — Android Kotlin/Compose + TPV demo template
+       │   ├─ coder_web (BALANCED)    — HTML+Tailwind+JS prototype
+       │   ├─ coder_backend (BALANCED)— FastAPI/Python project
+       │   └─ coder (BALANCED)        — generic HTML coder (fallback)
+       │
+       ├─ [Quality Gates — right column, 3-iteration loops]
+       │   ├─ pr_review (FAST)        — style/arch/bug review; loops → coder up to 3×
+       │   └─ security (BALANCED)     — OWASP Top 10 + Semgrep; loops → coder up to 3×
+       │
+       ├─ [Delivery — left column]
+       │   ├─ test_generator (BALANCED) — pytest/Jest/Espresso test files
+       │   ├─ devops (BALANCED)         — GitHub Actions CI/CD workflow
+       │   └─ infra (FAST)             — HTTP/ngrok (web), build instructions (mobile/backend)
+       │
+       └─ human_escalation → END
 ```
 
-**Dynamic routing:** orchestrator builds `agent_plan` → every agent → validation_gate → context_packer → next agent in plan. Legacy `next_agent` routing preserved for backward compatibility.
+## Pipeline Plans (orchestrator)
 
-## New Phase 1 Components
+| Scenario | Plan |
+|----------|------|
+| `poc` + mobile | orchestrator → coder_mobile → infra |
+| `poc` + web | orchestrator → coder_web → infra |
+| `poc` + backend | orchestrator → coder_backend → infra |
+| `poc` generic | orchestrator → coder → infra |
+| `internal` | orchestrator → ba_compliance → ux_ui → design_synthesizer → {coder} → test_generator → infra |
+| `production` | orchestrator → ba_compliance → ux_ui → architect → design_synthesizer → {coder} → pr_review → security → test_generator → devops → infra |
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| Agent Registry | `core/agent_registry/` | `@register()` decorator, auto-discovery, AgentOutput Pydantic model |
-| Validation Gate | `core/agent_registry/validation_gate.py` | Confidence check after every agent (< 60% → human escalation) |
-| Context Packer | `agents/context_packer/agent.py` | Compresses agent outputs into structured bullet points |
-| Circuit Breaker | `core/circuit_breaker/` | `@circuit_breaker` decorator — timeout, fallback, Slack approval |
-| Prompt Registry | `core/prompt_registry/` | Version-controlled prompts in `prompts/{agent}/system.txt` |
-| Enhanced State | `core/state/pipeline_state.py` | `agent_plan`, `agent_outputs`, `context_summaries`, confidence tracking |
-| Slack Interactive | `/slack/interactive` endpoint | Receives approval button clicks, unblocks circuit breakers |
+## Review Iteration Loops
+
+Both `pr_review` and `security` use **plan-injection** to loop back to the coder:
+
+```
+changes_requested + iterations < 3  → inject [coder_X, reviewer] back into agent_plan
+blocked / iterations >= 3           → confidence = 0.3 → validation_gate → human_escalation
+```
+
+## Phase Components
+
+| Phase | Component | Location | Purpose |
+|-------|-----------|----------|---------|
+| 1 | Agent Registry | `core/agent_registry/` | `@register()`, auto-discovery, AgentOutput |
+| 1 | Validation Gate | `core/agent_registry/validation_gate.py` | Confidence < 60% → human escalation |
+| 1 | Context Packer | `agents/context_packer/agent.py` | Compress outputs for next agent |
+| 1 | Circuit Breaker | `core/circuit_breaker/` | Timeout + Slack approval before fallback |
+| 1 | Prompt Registry | `core/prompt_registry/` | `prompts/{agent}/system.txt` |
+| 2 | coder_mobile | `agents/coder_mobile/` | Android Kotlin/Compose; TPV demo template |
+| 2 | coder_web | `agents/coder_web/` | HTML+Tailwind+JS |
+| 2 | coder_backend | `agents/coder_backend/` | FastAPI/Python |
+| 2 | design_synthesizer | `agents/design_synthesizer/` | Merge BA+Architect+UX/UI |
+| 2 | Mermaid in architect | `agents/architect/agent.py` | C4 diagram → Slack |
+| 3 | test_generator | `agents/test_generator/` | pytest/Jest/Espresso tests |
+| 3 | devops | `agents/devops/` | GitHub Actions CI/CD |
+| 3 | pr_review (enhanced) | `agents/pr_review/agent.py` | 3-iteration review loop |
+| 3 | security (enhanced) | `agents/security/agent.py` | OWASP Top 10 + iteration loop |
+| 4 | Dashboard layout | `core/events/graph_events.py` | All 17 agents, updated scenarios |
 
 ## AI Providers
 
