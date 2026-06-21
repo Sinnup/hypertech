@@ -35,7 +35,7 @@ class PipelineState(TypedDict):
     next_agent: Optional[str]
     status: str
 
-    # Agent outputs
+    # Agent outputs (legacy — kept for backward compatibility)
     agent_messages: List[AgentMessage]
     coder_output: Optional[dict]
     design_brief: Optional[dict]
@@ -52,6 +52,28 @@ class PipelineState(TypedDict):
     created_at: str
     last_updated: str
     error: Optional[str]
+
+    # === Phase 1 new fields ===
+
+    # Dynamic planning
+    agent_plan: List[str]           # ordered list of agent names to execute
+    agent_plan_index: int           # current position in the plan
+
+    # Structured agent outputs (AgentOutput stored as plain dict for TypedDict compat)
+    agent_outputs: dict            # dict[str, dict] — keyed by agent name
+    context_summaries: dict         # dict[str, str] — keyed by agent name
+    current_summary: Optional[str]  # active summary for the next agent to consume
+
+    # Confidence tracking
+    confidence_scores: dict         # dict[str, float] — per-agent confidence
+    overall_confidence: float       # rolling pipeline confidence (product of all)
+
+    # Iteration tracking (for review loops)
+    iteration_count: int
+
+    # Human escalation
+    human_escalation: bool
+    human_escalation_reason: Optional[str]
 
 
 def new_state(ticket_id: str, prompt: str) -> PipelineState:
@@ -76,6 +98,17 @@ def new_state(ticket_id: str, prompt: str) -> PipelineState:
         created_at=now,
         last_updated=now,
         error=None,
+        # Phase 1 defaults
+        agent_plan=[],
+        agent_plan_index=0,
+        agent_outputs={},
+        context_summaries={},
+        current_summary=None,
+        confidence_scores={},
+        overall_confidence=1.0,
+        iteration_count=0,
+        human_escalation=False,
+        human_escalation_reason=None,
     )
 
 
