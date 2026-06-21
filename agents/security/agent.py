@@ -17,6 +17,7 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
 from core.notifications import slack
 from core.secrets.loader import get_optional
 from core.tracing.langfuse import get_client, record_generation
@@ -86,6 +87,8 @@ _REVIEW_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+@register("security", description="Runs Semgrep SAST + LLM security review for fintech compliance (OWASP, EMV, PII)",
+          tier=ModelTier.BALANCED, tags=["security", "compliance"])
 @observe(name="security-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]

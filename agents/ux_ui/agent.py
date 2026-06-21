@@ -15,6 +15,7 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation, sum_token_usage
 import core.registry as registry_store
@@ -57,6 +58,8 @@ _WIREFRAME_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+@register("ux_ui", description="Generates design brief JSON + HTML wireframe from requirements",
+          tier=ModelTier.BALANCED, tags=["design", "wireframe"])
 @observe(name="ux-ui-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
@@ -113,8 +116,9 @@ def run(state: PipelineState) -> PipelineState:
     })
 
     state["design_brief"] = design_brief
+    scenario = state.get("scenario", "internal")
     state["current_agent"] = "ux_ui"
-    state["next_agent"] = None
+    state["next_agent"] = "architect" if scenario == "production" else None
     state["status"] = "design_ready"
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
     state["agent_messages"].append(

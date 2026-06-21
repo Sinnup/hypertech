@@ -13,6 +13,8 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
+from core.circuit_breaker import circuit_breaker
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation
 from agents.knowledge_base import agent as kb
@@ -43,7 +45,21 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
-def _format_kb_hits(hits: list[dict]) -> str:
+def _kb_fallback(prompt: str, n_results: int = 5) -> dict:
+    """Fallback: return empty KB results when ChromaDB is unreachable."""
+    slack.alert("⚠️ ChromaDB unavailable — running compliance check without regulatory context.")
+    return {"hits": [], "empty": True}
+
+
+@circuit_breaker(
+    service_name="chromadb",
+    fallback=_kb_fallback,
+    fallback_label="Run without regulatory context (last-known-good state)",
+    timeout=10.0,
+)
+def _query_kb(prompt: str, n_results: int = 5) -> dict:
+    """Query the knowledge base with circuit breaker protection."""
+    return kb.query(prompt, n_results=n_results)
     if not hits:
         return "No regulatory documents found in the knowledge base."
     parts = []
@@ -54,6 +70,8 @@ def _format_kb_hits(hits: list[dict]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
+@register("ba_compliance", description="Extracts requirements, validates against fintech regulations via ChromaDB RAG",
+          tier=ModelTier.BALANCED, tags=["analysis", "compliance", "rag"])
 @observe(name="ba-compliance-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
@@ -63,7 +81,7 @@ def run(state: PipelineState) -> PipelineState:
     slack.status(ticket_id, "📋 BA/Compliance agent started — extracting requirements...")
 
     # Query KB for relevant regulations
-    kb_result = kb.query(prompt, n_results=5)
+    kb_result = _query_kb(prompt, n_results=5)
     context = _format_kb_hits(kb_result["hits"])
 
     if kb_result["empty"]:

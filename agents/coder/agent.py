@@ -15,6 +15,8 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
+from core.circuit_breaker import circuit_breaker, CircuitBreakerError
 from core.notifications import slack
 from core.secrets.loader import get
 from core.tracing.langfuse import get_client, record_generation
@@ -32,6 +34,21 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+def _github_fallback(token: str, repo: str, ticket_id: str, filename: str, content: str) -> str:
+    """Fallback: return local path when GitHub is unreachable (file already saved)."""
+    local_path = Path(filename).resolve()
+    slack.alert(
+        f"⚠️ GitHub API unavailable — file saved locally: `{local_path}`"
+    )
+    return str(local_path)
+
+
+@circuit_breaker(
+    service_name="github_api",
+    fallback=_github_fallback,
+    fallback_label="Save locally — skip GitHub commit",
+    timeout=15.0,
+)
 def _github_commit(token: str, repo: str, ticket_id: str, filename: str, content: str) -> str:
     """Commit a file to a new feature branch via GitHub API. Returns the branch URL."""
     # Parse owner/repo from URL
@@ -77,6 +94,8 @@ def _generate_html(prompt: str) -> str:
     return llm_result.content
 
 
+@register("coder", description="Generates POC code (HTML/JS), commits to GitHub, saves locally",
+          tier=ModelTier.BALANCED, tags=["code-generation"])
 @observe(name="coder-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]

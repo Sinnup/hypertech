@@ -1,20 +1,55 @@
 """
 Orchestrator — entry point for every pipeline run.
-Classifies intent, sets scenario, updates feature registry, notifies Slack.
+Classifies intent, builds a dynamic agent execution plan, and (in demo mode)
+asks clarifying questions via Slack attributed to downstream agents.
 """
 
-import uuid
 from datetime import datetime, timezone
 
 from langfuse import observe
-from core.state.pipeline_state import PipelineState, agent_message
+from core.ai import ModelTier, get_llm, get_model_id, parse_json
+from core.agent_registry import register
+from core.agent_registry.models import AgentOutput
+from core.prompt_registry import get_prompt
 from core.routing.intent_classifier import classify
+from core.state.pipeline_state import PipelineState, agent_message
 from core.notifications import slack
 from core.secrets.loader import get_optional
-from core.tracing.langfuse import get_client
+from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
 
 
+# ---------------------------------------------------------------------------
+# Static plan templates — extended by dynamic detection at runtime
+# ---------------------------------------------------------------------------
+
+_PLANS = {
+    "poc": ["orchestrator", "coder", "infra"],
+    "internal": ["orchestrator", "ba_compliance", "ux_ui"],
+    "production": [
+        "orchestrator", "ba_compliance", "ux_ui",
+        "architect", "pr_review", "security",
+    ],
+}
+
+# Keywords that signal a mobile app prompt (for demo scenario routing)
+_MOBILE_KEYWORDS = [
+    "android", "ios", "mobile app", "apk", "react native",
+    "kotlin", "swift", "flutter", "kmp", "jetpack compose",
+    "tpv", "pos", "point of sale", "card payment", "payment terminal",
+]
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+
+@register(
+    "orchestrator",
+    description="Lead agent — intent classification and dynamic agent planning",
+    tier=ModelTier.FAST,
+    tags=["routing", "entry"],
+)
 @observe(name="orchestrator-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
@@ -26,22 +61,30 @@ def run(state: PipelineState) -> PipelineState:
     if client:
         client.update_current_span(input={"prompt": prompt, "ticket_id": ticket_id})
 
-    # Classify intent
+    # ---- Step 1: classify intent ------------------------------------------
     classification = classify(prompt, ticket_id=ticket_id)
     scenario = classification["scenario"]
-    next_agent = classification["starting_agent"]
+    confidence = classification.get("confidence", 0.90)
 
     slack.status(
         ticket_id,
-        f"🔍 Classified as *{scenario.upper()}* — routing to `{next_agent}` "
-        f"(confidence: {classification['confidence']:.0%})"
+        f"🔍 Classified as *{scenario.upper()}* "
+        f"(confidence: {confidence:.0%})"
     )
 
-    # Update feature registry
+    # ---- Step 2: build dynamic agent plan ---------------------------------
+    agent_plan = _build_plan(scenario, prompt)
+    demo_questions = _detect_demo_questions(scenario, prompt, agent_plan)
+
+    # ---- Step 3: ask clarifying questions in demo mode --------------------
+    if demo_questions:
+        _ask_demo_questions(ticket_id, demo_questions)
+
+    # ---- Step 4: update feature registry ----------------------------------
     registry_store.create_ticket(ticket_id, {
         "title": prompt[:80],
         "scenario": scenario,
-        "status": f"routed_to_{next_agent}",
+        "status": f"planned_{len(agent_plan)}_agents",
         "created": datetime.now(timezone.utc).isoformat(),
         "agents_involved": ["orchestrator"],
         "human_approvals": [],
@@ -49,14 +92,124 @@ def run(state: PipelineState) -> PipelineState:
         "changelog_ref": f"changelogs/{ticket_id}.md",
     })
 
-    # Update state
+    # ---- Step 5: write state ----------------------------------------------
+    first_agent = agent_plan[1] if len(agent_plan) > 1 else None
+
     state["scenario"] = scenario
     state["current_agent"] = "orchestrator"
-    state["next_agent"] = next_agent
-    state["status"] = f"routed_to_{next_agent}"
+    state["next_agent"] = first_agent          # legacy routing fallback
+    state["agent_plan"] = agent_plan            # dynamic plan (new path)
+    state["agent_plan_index"] = 1               # orchestrator is index 0
+    state["status"] = f"planned_{len(agent_plan)}_agents"
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
+
     state["agent_messages"].append(
-        agent_message("orchestrator", next_agent, "routing", ticket_id, classification)
+        agent_message("orchestrator", first_agent or "none", "plan_ready", ticket_id, {
+            "scenario": scenario,
+            "agent_plan": agent_plan,
+            "confidence": confidence,
+        })
     )
 
+    # ---- Step 6: store structured output ----------------------------------
+    state["agent_outputs"]["orchestrator"] = AgentOutput(
+        status="ok",
+        data={
+            "scenario": scenario,
+            "agent_plan": agent_plan,
+            "confidence": confidence,
+            "reason": classification.get("reason", ""),
+            "demo_questions": demo_questions,
+        },
+        confidence=confidence,
+        agent_name="orchestrator",
+    ).model_dump()
+
     return state
+
+
+# ---------------------------------------------------------------------------
+# Plan building
+# ---------------------------------------------------------------------------
+
+def _build_plan(scenario: str, prompt: str) -> list[str]:
+    """Build the agent execution plan for this scenario.
+
+    Extends the static templates with dynamic detection:
+    - Mobile app prompts → include mobile-specific agents if registered
+    - Web app prompts → use vanilla JS for POC
+
+    The plan always starts with orchestrator.
+    """
+    plan = list(_PLANS.get(scenario, _PLANS["poc"]))
+
+    # Check for mobile keywords
+    prompt_lower = prompt.lower()
+    is_mobile = any(kw in prompt_lower for kw in _MOBILE_KEYWORDS)
+
+    if is_mobile and scenario == "poc":
+        # For a mobile POC, keep coder + infra — the coder will generate
+        # Android code instead of HTML.  The demo scenario (Android TPV)
+        # triggers this path naturally.
+        # Future: when mobile_specialist agent exists, insert it here.
+        pass
+
+    return plan
+
+
+# ---------------------------------------------------------------------------
+# Demo-mode clarifying questions
+# ---------------------------------------------------------------------------
+
+def _detect_demo_questions(
+    scenario: str,
+    prompt: str,
+    plan: list[str],
+) -> list[dict]:
+    """Return clarifying questions for demo/poc scenarios.
+
+    Questions are attributed to the agent that would ask them so the
+    orchestrator can say "Designer asks: Material Design 3 or Liquid Glass?"
+    """
+    if scenario != "poc":
+        return []  # QA/Production is more cautious — agents ask individually
+
+    questions = []
+    prompt_lower = prompt.lower()
+
+    # Mobile app questions
+    if any(kw in prompt_lower for kw in _MOBILE_KEYWORDS):
+        if "designer" in plan or "ux_ui" in plan:
+            questions.append({
+                "from_agent": "designer",
+                "question": "Material Design 3 or Liquid Glass UI toolkit for this Android app?",
+            })
+        questions.append({
+            "from_agent": "architect",
+            "question": "Should this TPV app target Android only (POC) or plan for KMP (scaled)?",
+        })
+        questions.append({
+            "from_agent": "coder",
+            "question": "Generate a native Android APK (Kotlin/Jetpack Compose) or a PWA/web-based TPV?",
+        })
+
+    # General UI questions for any POC
+    if not questions:
+        questions.append({
+            "from_agent": "designer",
+            "question": f"Any preference for UI style (Material Design, minimal, or Tailwind clean)?",
+        })
+
+    return questions[:3]  # max 3 questions — don't overwhelm
+
+
+def _ask_demo_questions(ticket_id: str, questions: list[dict]) -> None:
+    """Post clarifying questions to Slack, attributed to downstream agents."""
+    for q in questions:
+        agent = q["from_agent"]
+        question = q["question"]
+        slack.alert(
+            f"💬 *{agent.title()} asks:* {question}\n"
+            f"(Reply in thread or via `/new` with clarifications)",
+            channel="agent-status",
+        )

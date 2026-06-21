@@ -3,6 +3,7 @@ Infra agent — serves the generated POC HTML locally, optionally exposes via ng
 posts the live URL to Slack #deployments.
 
 POC path: Python HTTP server on a random port; ngrok tunnel if NGROK_AUTH_TOKEN is set.
+Set ``NGROK_DOMAIN`` to use a static ngrok domain (free-tier: one per account).
 """
 
 import json
@@ -16,7 +17,9 @@ from datetime import datetime, timezone
 
 from langfuse import observe
 
+from core.ai import ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
 from core.notifications import slack
 from core.secrets.loader import get_optional
 from core.tracing.langfuse import get_client
@@ -50,25 +53,40 @@ def _serve(directory: str, port: int):
 
 
 def _ngrok_tunnel(port: int) -> str | None:
-    """Start an ngrok tunnel and return the public URL, or None if not configured."""
+    """Start an ngrok tunnel and return the public URL, or None if not configured.
+
+    Uses ``NGROK_DOMAIN`` (static domain) when set, falling back to a random
+    ngrok URL.  Requires ``NGROK_AUTH_TOKEN``.
+    """
     token = get_optional("NGROK_AUTH_TOKEN")
     if not token:
         return None
+
+    domain = get_optional("NGROK_DOMAIN")  # e.g. "unplug-active-observing.ngrok-free.dev"
+
     try:
         import ngrok  # pip install ngrok
-        listener = ngrok.forward(port, authtoken=token)
+        kwargs = {"port": port, "authtoken": token}
+        if domain:
+            kwargs["domain"] = domain
+        listener = ngrok.forward(**kwargs)
         return listener.url()
     except ImportError:
         # Fall back to pyngrok if ngrok SDK not installed
         try:
             from pyngrok import ngrok as pyngrok, conf
             conf.get_default().auth_token = token
-            tunnel = pyngrok.connect(port)
+            kwargs = {"port": port}
+            if domain:
+                kwargs["hostname"] = domain
+            tunnel = pyngrok.connect(**kwargs)
             return tunnel.public_url
         except ImportError:
             return None
 
 
+@register("infra", description="Serves POC locally via HTTP server + ngrok tunnel",
+          tier=ModelTier.FAST, tags=["deployment", "infrastructure"])
 @observe(name="infra-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]

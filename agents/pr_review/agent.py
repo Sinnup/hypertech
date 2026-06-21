@@ -17,6 +17,7 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
 from core.notifications import slack
 from core.secrets.loader import get, get_optional
 from core.tracing.langfuse import get_client, record_generation
@@ -75,6 +76,8 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+@register("pr_review", description="Reviews generated code for style, architecture, bugs — returns verdict",
+          tier=ModelTier.FAST, tags=["review", "quality"])
 @observe(name="pr-review-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]

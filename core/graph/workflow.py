@@ -1,102 +1,132 @@
 """
-LangGraph workflow — defines the agent graph and conditional routing.
+LangGraph workflow — dynamic agent graph with validation gate and context packer.
 
-POC path:
-  orchestrator → coder → infra → END
+Phase 1 topology (backward compatible)::
 
-Internal path:
-  orchestrator → ba_compliance → ux_ui → END
+    entry → orchestrator
+    orchestrator → validation_gate
+    validation_gate → context_packer   (ok)
+    validation_gate → human_escalation (low confidence / failed)
+    context_packer → _plan_router → [next agent] → validation_gate → ...
+    human_escalation → END
+    _plan_router → END  (when no more agents)
 
-Production path:
-  orchestrator → ba_compliance → ux_ui → architect → pr_review → security → END
+Legacy fallback — when ``agent_plan`` is empty (existing orchestrator doesn't set it),
+``_plan_router`` reads ``next_agent`` from state and routes identically to the old
+hardcoded paths.  Every agent writes ``current_agent`` and ``next_agent`` as before
+so the old POC / Internal / Production flows work unchanged.
 """
 
 from langgraph.graph import StateGraph, END
 from core.state.pipeline_state import PipelineState
-from agents.orchestrator import agent as orchestrator
-from agents.coder import agent as coder
-from agents.infra import agent as infra
-from agents.ba_compliance import agent as ba_compliance
-from agents.ux_ui import agent as ux_ui
-from agents.architect import agent as architect
-from agents.pr_review import agent as pr_review
-from agents.security import agent as security
+from core.agent_registry import discover_agents, get_agents
+from core.agent_registry.validation_gate import validation_gate_node, route_from_gate
+from agents.context_packer.agent import run as context_packer_run
 
 
-def _route_from_orchestrator(state: PipelineState) -> str:
-    next_agent = state.get("next_agent")
-    if next_agent == "coder":
-        return "coder"
-    if next_agent == "ba_compliance":
-        return "ba_compliance"
-    return END
-
-
-def _route_from_ba(state: PipelineState) -> str:
-    next_agent = state.get("next_agent")
-    if next_agent == "ux_ui":
-        return "ux_ui"
-    return END
-
-
-def _route_from_ux_ui(state: PipelineState) -> str:
-    """Production scenario continues to architect; internal stops here."""
-    scenario = state.get("scenario", "internal")
-    if scenario == "production":
-        return "architect"
-    return END
-
-
-def _route_from_pr_review(state: PipelineState) -> str:
-    """Blocked review skips security; approved/changes_requested continue."""
-    next_agent = state.get("next_agent")
-    if next_agent == "security":
-        return "security"
-    return END
-
+# ---------------------------------------------------------------------------
+# Graph construction
+# ---------------------------------------------------------------------------
 
 def build() -> StateGraph:
+    """Build and compile the dynamic agent graph."""
+    discover_agents()
+    agents = get_agents()
+
     graph = StateGraph(PipelineState)
 
-    graph.add_node("orchestrator", orchestrator.run)
-    graph.add_node("coder", coder.run)
-    graph.add_node("infra", infra.run)
-    graph.add_node("ba_compliance", ba_compliance.run)
-    graph.add_node("ux_ui", ux_ui.run)
-    graph.add_node("architect", architect.run)
-    graph.add_node("pr_review", pr_review.run)
-    graph.add_node("security", security.run)
+    # -- Register all discovered agent nodes ---------------------------------
+    for name, defn in agents.items():
+        if defn.visible and defn.fn is not None:
+            graph.add_node(name, defn.fn)
 
+    # -- Infrastructure nodes (always present) --------------------------------
+    # Note: context_packer is auto-discovered via @register — skip if already present.
+    if "context_packer" not in agents:
+        graph.add_node("context_packer", context_packer_run)
+    graph.add_node("validation_gate", validation_gate_node)
+    graph.add_node("human_escalation", _human_escalation)
+
+    # -- Entry point ----------------------------------------------------------
     graph.set_entry_point("orchestrator")
 
-    graph.add_conditional_edges("orchestrator", _route_from_orchestrator, {
-        "coder": "coder",
-        "ba_compliance": "ba_compliance",
-        END: END,
-    })
+    # -- Orchestrator → validation_gate ---------------------------------------
+    graph.add_edge("orchestrator", "validation_gate")
 
-    # POC path: coder → infra → done
-    graph.add_edge("coder", "infra")
-    graph.add_edge("infra", END)
+    # -- Validation gate → context_packer or human_escalation -----------------
+    graph.add_conditional_edges(
+        "validation_gate",
+        route_from_gate,
+        {
+            "context_packer": "context_packer",
+            "human_escalation": "human_escalation",
+        },
+    )
 
-    # BA → UX/UI (both internal and production)
-    graph.add_conditional_edges("ba_compliance", _route_from_ba, {
-        "ux_ui": "ux_ui",
-        END: END,
-    })
+    # -- Context packer → next agent in plan (or END) -------------------------
+    graph.add_conditional_edges(
+        "context_packer",
+        _plan_router,
+        {},  # dynamic destinations — _plan_router returns agent name or END
+    )
 
-    # UX/UI → architect (production only) or END (internal)
-    graph.add_conditional_edges("ux_ui", _route_from_ux_ui, {
-        "architect": "architect",
-        END: END,
-    })
+    # -- Every visible agent (except orchestrator) → validation_gate ----------
+    for name in agents:
+        if name != "orchestrator" and agents[name].visible:
+            graph.add_edge(name, "validation_gate")
 
-    # Production path: architect → pr_review → security → done
-    graph.add_edge("architect", "pr_review")
-    graph.add_conditional_edges("pr_review", _route_from_pr_review, {
-        "security": "security",
-        END: END,
-    })
-    graph.add_edge("security", END)
+    # -- Human escalation is terminal ----------------------------------------
+    graph.add_edge("human_escalation", END)
 
     return graph.compile()
+
+
+# ---------------------------------------------------------------------------
+# Routing
+# ---------------------------------------------------------------------------
+
+def _plan_router(state: PipelineState) -> str:
+    """Return the next agent to execute, or END.
+
+    Priority:
+    1. ``agent_plan`` — set by enhanced orchestrator (new path).
+    2. ``next_agent`` — set by legacy agents (old path, backward compat).
+    3. END — no more work.
+    """
+    # Priority 1: dynamic agent_plan
+    plan = state.get("agent_plan", [])
+    idx = state.get("agent_plan_index", 0)
+    if plan and idx < len(plan):
+        next_up = plan[idx]
+        # Safety: don't route to self or to non-existent agents
+        if next_up != state.get("current_agent", ""):
+            return next_up
+        # Skip self, advance to next
+        idx += 1
+        state["agent_plan_index"] = idx
+        if idx < len(plan):
+            return plan[idx]
+        return END
+
+    # Priority 2: legacy next_agent
+    nxt = state.get("next_agent")
+    if nxt and nxt != state.get("current_agent", ""):
+        return nxt
+
+    return END
+
+
+# ---------------------------------------------------------------------------
+# Human escalation — terminal node
+# ---------------------------------------------------------------------------
+
+def _human_escalation(state: PipelineState) -> PipelineState:
+    """Terminal node: pipeline stops and waits for human review."""
+    from datetime import datetime, timezone
+
+    state["status"] = "human_escalation"
+    state["current_agent"] = "human_escalation"
+    state["next_agent"] = None
+    state["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+    return state

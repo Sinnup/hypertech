@@ -14,6 +14,7 @@ from langfuse import observe
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
+from core.agent_registry import register
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation
 import core.registry as registry_store
@@ -48,6 +49,8 @@ _PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 
+@register("architect", description="Produces High-Level Design (HLD) JSON with tech stack, components, security controls",
+          tier=ModelTier.POWERFUL, tags=["architecture", "design"])
 @observe(name="architect-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
