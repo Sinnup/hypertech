@@ -75,6 +75,7 @@ def run(state: PipelineState) -> PipelineState:
 
     # ── Figma integration: pull design assets & tokens ──────────────────
     figma_context = ""
+    figma_file_name = ""
     figma_assets_dir = Path(f"poc/{ticket_id}/assets")
     figma = get_figma_client()
 
@@ -88,17 +89,16 @@ def run(state: PipelineState) -> PipelineState:
                     f"📐 Figma project has {len(files)} file(s) — "
                     f"extracting tokens and exporting assets..."
                 )
-                # Use the first (most recent) file
                 main_file = files[0]
                 file_key = main_file["key"]
-                file_name = main_file.get("name", file_key)
+                figma_file_name = main_file.get("name", file_key)
 
                 # Extract design tokens
                 tokens = figma.extract_tokens(file_key)
                 token_colors = tokens.get("colors", {})
                 token_typo = tokens.get("typography", {})
 
-                # Find top-level frames (screens)
+                # Find top-level frames (screens) and export
                 file_data = figma.get_file(file_key, depth=1)
                 doc = file_data.get("document", {})
                 frames = [
@@ -106,7 +106,6 @@ def run(state: PipelineState) -> PipelineState:
                     if c.get("type") == "FRAME"
                 ]
                 if frames:
-                    # Export first 5 frames as PNG assets
                     frame_ids = [f["id"] for f in frames[:5]]
                     exported = figma.export_screens(
                         file_key, frame_ids, figma_assets_dir,
@@ -117,7 +116,6 @@ def run(state: PipelineState) -> PipelineState:
                         f"to poc/{ticket_id}/assets/"
                     )
                 else:
-                    # Try exporting the document root
                     figma.export_screens(
                         file_key, [doc["id"]], figma_assets_dir,
                     )
@@ -132,13 +130,12 @@ def run(state: PipelineState) -> PipelineState:
                     for name, t in list(token_typo.items())[:10]
                 )
                 figma_context = (
-                    f"\n\nFigma file: {file_name}\n"
+                    f"\n\nFigma file: {figma_file_name}\n"
                     f"Colors from design system:\n{color_list}\n\n"
                     f"Typography:\n{typo_list}\n\n"
                     f"Use these exact design tokens in the design brief. "
                     f"The wireframe should reflect the Figma design system."
                 )
-
         except Exception as exc:
             slack.status(
                 ticket_id,
@@ -156,10 +153,10 @@ def run(state: PipelineState) -> PipelineState:
     })
     design_brief = parse_json(brief_result.content)
 
-    # Merge Figma tokens into the design brief
+    # Merge Figma metadata into the design brief
     if figma and figma_context:
-        design_brief.setdefault("figma_file", files[0]["name"] if files else "unknown")
-        design_brief.setdefault("assets_path", str(figma_assets_dir.resolve()))
+        design_brief["figma_file"] = figma_file_name
+        design_brief["assets_path"] = str(figma_assets_dir.resolve())
 
     slack.status(
         ticket_id,
