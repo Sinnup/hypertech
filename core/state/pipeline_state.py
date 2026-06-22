@@ -1,11 +1,35 @@
 """
 PipelineState — the single shared state object passed between all agents
 via LangGraph. Every agent reads from and writes to this dict.
+
+All fields use ``Annotated`` with reducers so LangGraph 1.2.5+ can handle
+the initial-state write + first-node return without ``InvalidUpdateError``.
 """
 
-from typing import TypedDict, Optional, List, Literal
+import operator
+from typing import TypedDict, Optional, List, Literal, Annotated
 from datetime import datetime, timezone
 
+
+# ---------------------------------------------------------------------------
+# Custom reducers for LangGraph channels
+# ---------------------------------------------------------------------------
+
+def _keep_latest(_current, update):
+    """Last-write-wins for scalar fields (str, int, float, bool)."""
+    return update
+
+
+def _merge_dicts(current, update):
+    """Shallow-merge *update* into *current* for dict fields."""
+    merged = dict(current or {})
+    merged.update(update or {})
+    return merged
+
+
+# ---------------------------------------------------------------------------
+# Sub-types
+# ---------------------------------------------------------------------------
 
 class AgentMessage(TypedDict):
     from_agent: str
@@ -24,61 +48,67 @@ class HumanApproval(TypedDict):
     at: Optional[str]
 
 
+# ---------------------------------------------------------------------------
+# PipelineState — Annotated for LangGraph 1.2.5+ multi-write tolerance
+# ---------------------------------------------------------------------------
+
 class PipelineState(TypedDict):
-    # Identity
-    ticket_id: str
-    scenario: Literal["poc", "internal", "production"]
-    human_prompt: str
+    # Identity (scalar — last write wins)
+    ticket_id: Annotated[str, _keep_latest]
+    scenario: Annotated[str, _keep_latest]
+    human_prompt: Annotated[str, _keep_latest]
 
     # Routing
-    current_agent: str
-    next_agent: Optional[str]
-    status: str
+    current_agent: Annotated[str, _keep_latest]
+    next_agent: Annotated[Optional[str], _keep_latest]
+    status: Annotated[str, _keep_latest]
 
-    # Agent outputs (legacy — kept for backward compatibility)
-    agent_messages: List[AgentMessage]
-    coder_output: Optional[dict]
-    design_brief: Optional[dict]
-    design_synthesis: Optional[dict]   # Phase 2: merged output from design_synthesizer
-    hld_output: Optional[dict]
-    compliance_report: Optional[dict]
-    security_findings: Optional[dict]
-    deploy_url: Optional[str]
+    # Agent outputs — dict fields (merge)
+    agent_messages: Annotated[List[AgentMessage], operator.add]
+    coder_output: Annotated[Optional[dict], _keep_latest]
+    design_brief: Annotated[Optional[dict], _keep_latest]
+    design_synthesis: Annotated[Optional[dict], _keep_latest]
+    hld_output: Annotated[Optional[dict], _keep_latest]
+    compliance_report: Annotated[Optional[dict], _keep_latest]
+    security_findings: Annotated[Optional[dict], _keep_latest]
+    deploy_url: Annotated[Optional[str], _keep_latest]
 
     # Human in the loop
-    human_approval_required: bool
-    human_approvals: List[HumanApproval]
+    human_approval_required: Annotated[bool, _keep_latest]
+    human_approvals: Annotated[List[HumanApproval], operator.add]
 
     # Meta
-    created_at: str
-    last_updated: str
-    error: Optional[str]
-
-    # === Phase 1 new fields ===
+    created_at: Annotated[str, _keep_latest]
+    last_updated: Annotated[str, _keep_latest]
+    error: Annotated[Optional[str], _keep_latest]
 
     # Dynamic planning
-    agent_plan: List[str]           # ordered list of agent names to execute
-    agent_plan_index: int           # current position in the plan
+    agent_plan: Annotated[List[str], _keep_latest]
+    agent_plan_index: Annotated[int, _keep_latest]
 
-    # Structured agent outputs (AgentOutput stored as plain dict for TypedDict compat)
-    agent_outputs: dict            # dict[str, dict] — keyed by agent name
-    context_summaries: dict         # dict[str, str] — keyed by agent name
-    current_summary: Optional[str]  # active summary for the next agent to consume
+    # Structured agent outputs (dict[str, dict] — merge)
+    agent_outputs: Annotated[dict, _merge_dicts]
+    context_summaries: Annotated[dict, _merge_dicts]
+    current_summary: Annotated[Optional[str], _keep_latest]
 
     # Confidence tracking
-    confidence_scores: dict         # dict[str, float] — per-agent confidence
-    overall_confidence: float       # rolling pipeline confidence (product of all)
+    confidence_scores: Annotated[dict, _merge_dicts]
+    overall_confidence: Annotated[float, _keep_latest]
 
-    # Iteration tracking (for review loops)
-    iteration_count: int
+    # Iteration tracking
+    iteration_count: Annotated[int, _keep_latest]
 
     # Human escalation
-    human_escalation: bool
-    human_escalation_reason: Optional[str]
+    human_escalation: Annotated[bool, _keep_latest]
+    human_escalation_reason: Annotated[Optional[str], _keep_latest]
 
     # Checkpoint / resume
-    resumed_from_checkpoint: bool
+    resumed_from_checkpoint: Annotated[bool, _keep_latest]
 
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
 
 def new_state(ticket_id: str, prompt: str) -> PipelineState:
     """Create a fresh pipeline state for a new ticket."""
