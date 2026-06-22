@@ -60,6 +60,10 @@ def _kb_fallback(prompt: str, n_results: int = 5) -> dict:
 def _query_kb(prompt: str, n_results: int = 5) -> dict:
     """Query the knowledge base with circuit breaker protection."""
     return kb.query(prompt, n_results=n_results)
+
+
+def _format_kb_hits(hits: list) -> str:
+    """Format KB hit documents into a context string for the LLM prompt."""
     if not hits:
         return "No regulatory documents found in the knowledge base."
     parts = []
