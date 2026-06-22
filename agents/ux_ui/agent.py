@@ -16,6 +16,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry import register
+from core.agent_registry.models import AgentOutput
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation, sum_token_usage
 import core.registry as registry_store
@@ -127,5 +128,13 @@ def run(state: PipelineState) -> PipelineState:
             {"screens": len(design_brief.get("screens", [])), "wireframe_path": str(wireframe_path)}
         )
     )
+
+    # Store structured output so context_packer can find it and advance the plan index
+    state["agent_outputs"]["ux_ui"] = AgentOutput(
+        status="ok",
+        data=design_brief,
+        confidence=0.92,
+        agent_name="ux_ui",
+    ).model_dump()
 
     return state

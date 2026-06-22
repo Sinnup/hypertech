@@ -16,6 +16,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry import register
+from core.agent_registry.models import AgentOutput
 from core.circuit_breaker import circuit_breaker, CircuitBreakerError
 from core.notifications import slack
 from core.secrets.loader import get
@@ -153,5 +154,12 @@ def run(state: PipelineState) -> PipelineState:
     state["agent_messages"].append(
         agent_message("coder", "infra", "code_ready", ticket_id, state["coder_output"])
     )
+
+    state["agent_outputs"]["coder"] = AgentOutput(
+        status="ok",
+        data=state["coder_output"],
+        confidence=0.90,
+        agent_name="coder",
+    ).model_dump()
 
     return state
