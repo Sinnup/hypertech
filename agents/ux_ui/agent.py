@@ -17,6 +17,7 @@ from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry import register
 from core.agent_registry.models import AgentOutput
+from core.integrations.figma import get_figma_client
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation, sum_token_usage
 import core.registry as registry_store
@@ -72,16 +73,93 @@ def run(state: PipelineState) -> PipelineState:
     requirements = [r["description"] for r in compliance.get("requirements", [])]
     compliance_status = compliance.get("overall_status", "unknown")
 
+    # ── Figma integration: pull design assets & tokens ──────────────────
+    figma_context = ""
+    figma_assets_dir = Path(f"poc/{ticket_id}/assets")
+    figma = get_figma_client()
+
+    if figma:
+        slack.status(ticket_id, "🎨 Fetching design assets from Figma...")
+        try:
+            files = figma.get_project_files()
+            if files:
+                slack.status(
+                    ticket_id,
+                    f"📐 Figma project has {len(files)} file(s) — "
+                    f"extracting tokens and exporting assets..."
+                )
+                # Use the first (most recent) file
+                main_file = files[0]
+                file_key = main_file["key"]
+                file_name = main_file.get("name", file_key)
+
+                # Extract design tokens
+                tokens = figma.extract_tokens(file_key)
+                token_colors = tokens.get("colors", {})
+                token_typo = tokens.get("typography", {})
+
+                # Find top-level frames (screens)
+                file_data = figma.get_file(file_key, depth=1)
+                doc = file_data.get("document", {})
+                frames = [
+                    c for c in doc.get("children", [])
+                    if c.get("type") == "FRAME"
+                ]
+                if frames:
+                    # Export first 5 frames as PNG assets
+                    frame_ids = [f["id"] for f in frames[:5]]
+                    exported = figma.export_screens(
+                        file_key, frame_ids, figma_assets_dir,
+                    )
+                    slack.status(
+                        ticket_id,
+                        f"🖼️ Exported {len(exported)} screen(s) from Figma "
+                        f"to poc/{ticket_id}/assets/"
+                    )
+                else:
+                    # Try exporting the document root
+                    figma.export_screens(
+                        file_key, [doc["id"]], figma_assets_dir,
+                    )
+
+                # Build context string for the LLM
+                color_list = "\n".join(
+                    f"  - {name}: {hex_val}"
+                    for name, hex_val in list(token_colors.items())[:20]
+                )
+                typo_list = "\n".join(
+                    f"  - {name}: {t.get('family', '?')} {t.get('size', '?')}px @{t.get('weight', '?')}"
+                    for name, t in list(token_typo.items())[:10]
+                )
+                figma_context = (
+                    f"\n\nFigma file: {file_name}\n"
+                    f"Colors from design system:\n{color_list}\n\n"
+                    f"Typography:\n{typo_list}\n\n"
+                    f"Use these exact design tokens in the design brief. "
+                    f"The wireframe should reflect the Figma design system."
+                )
+
+        except Exception as exc:
+            slack.status(
+                ticket_id,
+                f"⚠️ Figma fetch failed ({exc}) — falling back to LLM-only design."
+            )
+
     llm = get_llm(tier=ModelTier.BALANCED, temperature=0.4)
 
-    # Step 1: Generate design brief JSON
+    # Step 1: Generate design brief JSON (enriched with Figma data if available)
     brief_chain = _BRIEF_PROMPT | llm
     brief_result = brief_chain.invoke({
-        "prompt": prompt,
+        "prompt": prompt + figma_context,
         "requirements": "\n".join(f"- {r}" for r in requirements) or "None specified",
         "compliance_status": compliance_status,
     })
     design_brief = parse_json(brief_result.content)
+
+    # Merge Figma tokens into the design brief
+    if figma and figma_context:
+        design_brief.setdefault("figma_file", files[0]["name"] if files else "unknown")
+        design_brief.setdefault("assets_path", str(figma_assets_dir.resolve()))
 
     slack.status(
         ticket_id,
