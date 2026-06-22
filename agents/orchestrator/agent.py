@@ -4,6 +4,7 @@ Classifies intent, builds a dynamic agent execution plan, and (in demo mode)
 asks clarifying questions via Slack attributed to downstream agents.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from langfuse import observe
@@ -72,6 +73,34 @@ _BACKEND_KEYWORDS = [
 @observe(name="orchestrator-agent")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
+
+    # ── Resume mode: skip classification, planning, and registry creation ──
+    if state.get("resumed_from_checkpoint"):
+        logging.getLogger(__name__).info(
+            "Resume mode for %s — skipping classification (plan_index=%s, completed=%s)",
+            ticket_id,
+            state.get("agent_plan_index"),
+            list(state.get("agent_outputs", {}).keys()),
+        )
+
+        # Update feature registry to reflect resume
+        registry_store.update_ticket(ticket_id, {
+            "status": f"resumed_at_index_{state.get('agent_plan_index', 0)}",
+            "resumed": True,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        })
+
+        state["status"] = f"resumed_at_agent_{state.get('agent_plan_index', 0)}"
+        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+        slack.status(
+            ticket_id,
+            f"♻️ Resumed from checkpoint — continuing at agent "
+            f"#{state.get('agent_plan_index', 0)}",
+        )
+        return state
+
+    # ── Normal (non-resume) path ─────────────────────────────────────────
     prompt = state["human_prompt"]
 
     slack.status(ticket_id, "🟡 Orchestrator received prompt — classifying intent...")
@@ -118,7 +147,7 @@ def run(state: PipelineState) -> PipelineState:
     state["current_agent"] = "orchestrator"
     state["next_agent"] = first_agent          # legacy routing fallback
     state["agent_plan"] = agent_plan            # dynamic plan (new path)
-    state["agent_plan_index"] = 1               # orchestrator is index 0
+    state["agent_plan_index"] = 0               # orchestrator just completed at plan[0]
     state["status"] = f"planned_{len(agent_plan)}_agents"
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
 

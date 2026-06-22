@@ -1,5 +1,6 @@
 """
-Slack slash command handlers — responds to /status, /reload-kb, /deploy, /new.
+Slack slash command handlers — responds to /new, /resume, /status, /checkpoints,
+/reload-kb, /deploy, /switch-provider.
 
 Run this as a standalone Flask server (or mount on an existing app) and point
 your Slack app's slash command Request URL at it.
@@ -27,6 +28,7 @@ from core.notifications import slack
 from core.server.viz_routes import viz_bp
 from ingestion.google_drive import ingest as drive_ingest
 from core.ai.fallback import override_provider, current_provider
+from core.checkpoint.manager import list_checkpoints, exists as checkpoint_exists
 
 app = Flask(__name__)
 app.register_blueprint(viz_bp)
@@ -71,6 +73,10 @@ def slack_commands():
         return _handle_switch_provider(text, user_id)
     if command == "/new":
         return _handle_new(text, user_id)
+    if command == "/resume":
+        return _handle_resume(text, user_id)
+    if command == "/checkpoints":
+        return _handle_checkpoints()
 
     return jsonify({"text": f"Unknown command: {command}"}), 200
 
@@ -99,6 +105,16 @@ def _handle_status(ticket_id: str):
     ]
     if entry.get("deploy_url"):
         lines.append(f"*Live at:* {entry['deploy_url']}")
+
+    # Checkpoint info (if exists)
+    if checkpoint_exists(ticket_id):
+        from core.checkpoint.manager import load as load_checkpoint
+        cp_state = load_checkpoint(ticket_id)
+        if cp_state:
+            cp_agents = list(cp_state.get("agent_outputs", {}).keys())
+            cp_index = cp_state.get("agent_plan_index", "?")
+            lines.append(f"*Checkpoint:* index {cp_index} — completed: {' → '.join(cp_agents) or 'none'}")
+            lines.append(f"_Resume with:_ `/resume {ticket_id}`")
 
     return jsonify({"text": "\n".join(lines)}), 200
 
@@ -274,6 +290,135 @@ def _handle_new(text: str, user_id: str):
             f"I'll notify <@{user_id}> when complete."
         )
     }), 200
+
+
+# ---------------------------------------------------------------------------
+# /resume — resume a pipeline from a saved checkpoint
+# ---------------------------------------------------------------------------
+
+def _handle_resume(text: str, user_id: str):
+    """
+    Resume a pipeline from a saved checkpoint.
+
+    Usage: /resume [ticket_id]
+
+    If *ticket_id* is omitted, the most recent checkpoint is used.
+    """
+    parts = text.strip().split(maxsplit=1)
+    ticket_id = parts[0] if parts else ""
+    prompt_override = parts[1] if len(parts) > 1 else ""
+
+    # ── Resolve ticket ────────────────────────────────────────────────────
+    if ticket_id:
+        if not checkpoint_exists(ticket_id):
+            return jsonify({
+                "text": f"❌ No checkpoint found for *{ticket_id}*.\n"
+                        f"Use `/checkpoints` to see available checkpoints, "
+                        f"or `/new <prompt>` to start fresh.",
+            }), 200
+    else:
+        checkpoints = list_checkpoints()
+        if not checkpoints:
+            return jsonify({
+                "text": "❌ No checkpoints available.\n"
+                        "Use `/new <prompt>` to start a new pipeline.",
+            }), 200
+        ticket_id = checkpoints[0]["ticket_id"]
+
+    # ── Launch (async — same pattern as /new) ─────────────────────────────
+    def _run():
+        try:
+            from main import run_pipeline
+            result = run_pipeline(ticket_id, prompt_override, resume=True)
+
+            status = result.get("status", "unknown")
+            scenario = result.get("scenario", "?")
+            deploy_url = result.get("deploy_url")
+            coder_out = result.get("coder_output") or {}
+            branch_url = coder_out.get("branch_url")
+            error = result.get("error")
+
+            if error:
+                slack.alert(
+                    f"❌ *Resumed pipeline {ticket_id} failed*\n"
+                    f"*Scenario:* {scenario}\n"
+                    f"*Error:* {error}\n"
+                    f"*Triggered by:* <@{user_id}>",
+                    channel="#pipeline-alerts",
+                )
+                return
+
+            lines = [
+                f"✅ *Resumed pipeline {ticket_id} complete*",
+                f"*Scenario:* {scenario}",
+                f"*Status:* {status}",
+            ]
+            if branch_url:
+                lines.append(f"*Branch:* {branch_url}")
+            if deploy_url:
+                lines.append(f"*Live at:* {deploy_url}")
+            lines.append(f"*Triggered by:* <@{user_id}>")
+
+            slack.alert("\n".join(lines), channel="#pipeline-alerts")
+
+        except Exception as e:
+            slack.alert(
+                f"❌ *Resumed pipeline {ticket_id} crashed*\n"
+                f"*Error:* {type(e).__name__}: {e}\n"
+                f"*Triggered by:* <@{user_id}>",
+                channel="#pipeline-alerts",
+            )
+            try:
+                from core.registry import update_ticket
+                update_ticket(ticket_id, {"status": "failed", "error": str(e)})
+            except Exception:
+                pass
+
+    Thread(target=_run, daemon=True).start()
+
+    # ── Respond immediately ───────────────────────────────────────────────
+    return jsonify({
+        "text": (
+            f"♻️ *Pipeline resumed — {ticket_id}*\n"
+            f"Continuing from the last checkpoint. "
+            f"I'll notify <@{user_id}> when complete."
+        )
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# /checkpoints — list all saved checkpoints
+# ---------------------------------------------------------------------------
+
+def _handle_checkpoints():
+    """
+    List all available checkpoints, newest first.
+
+    Usage: /checkpoints
+    """
+    checkpoints = list_checkpoints()
+    if not checkpoints:
+        return jsonify({
+            "text": "📭 No checkpoints found.\n"
+                    "Checkpoints are created automatically as pipelines run — "
+                    "use `/new <prompt>` to start one.",
+        }), 200
+
+    lines = ["📋 *Saved checkpoints:*"]
+    for i, cp in enumerate(checkpoints[:10], 1):  # max 10 to avoid overflow
+        agents = " → ".join(cp.get("completed_agents", [])) or "none"
+        lines.append(
+            f"{i}. *{cp['ticket_id']}* — index {cp.get('agent_plan_index', '?')} "
+            f"({agents})"
+        )
+        if cp.get("saved_at"):
+            lines.append(f"   _Saved: {cp['saved_at'][:19]}_")
+
+    if len(checkpoints) > 10:
+        lines.append(f"   ... and {len(checkpoints) - 10} more")
+
+    lines.append(f"\nResume with: `/resume <ticket_id>`")
+    return jsonify({"text": "\n".join(lines)}), 200
 
 
 # ---------------------------------------------------------------------------

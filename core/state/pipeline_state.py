@@ -76,6 +76,9 @@ class PipelineState(TypedDict):
     human_escalation: bool
     human_escalation_reason: Optional[str]
 
+    # Checkpoint / resume
+    resumed_from_checkpoint: bool
+
 
 def new_state(ticket_id: str, prompt: str) -> PipelineState:
     """Create a fresh pipeline state for a new ticket."""
@@ -111,6 +114,7 @@ def new_state(ticket_id: str, prompt: str) -> PipelineState:
         iteration_count=0,
         human_escalation=False,
         human_escalation_reason=None,
+        resumed_from_checkpoint=False,
     )
 
 

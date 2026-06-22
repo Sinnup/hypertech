@@ -4,6 +4,8 @@ Entry point — run the agentic pipeline with a human prompt.
 Usage:
     python main.py "Build a payment confirmation screen POC"
     python main.py --ticket HT-001 "Build a login flow prototype"
+    python main.py --resume                    # resume most recent checkpoint
+    python main.py --resume --ticket HT-001    # resume specific ticket
 
 Also importable — ``run_pipeline()`` is used by slack_commands for /new.
 """
@@ -24,13 +26,19 @@ from core.state.pipeline_state import new_state
 from core.graph.workflow import build
 
 
-def run_pipeline(ticket_id: str, prompt: str) -> dict:
+def run_pipeline(
+    ticket_id: str,
+    prompt: str,
+    resume: bool = False,
+) -> dict:
     """
     Run the full LangGraph pipeline for a ticket.
 
     Args:
         ticket_id: The ticket ID (e.g. "HT-AB12CD").
-        prompt: The natural-language prompt to process.
+        prompt: The natural-language prompt to process (ignored on resume
+                unless the checkpoint is missing — the saved prompt is used).
+        resume: If True, attempt to load a checkpoint for *ticket_id*.
 
     Returns:
         The final PipelineState dict after all agents have run.
@@ -46,7 +54,27 @@ def run_pipeline(ticket_id: str, prompt: str) -> dict:
     from core.server.viz_server import start_viz_server
     start_viz_server()
 
-    state = new_state(ticket_id=ticket_id, prompt=prompt)
+    # ── Checkpoint detection ──────────────────────────────────────────────
+    from core.checkpoint.manager import load as load_checkpoint, exists as checkpoint_exists
+
+    checkpoint = None
+    if resume or checkpoint_exists(ticket_id):
+        checkpoint = load_checkpoint(ticket_id)
+
+    if checkpoint is not None:
+        state = checkpoint
+        print(f"   ♻️  Resuming from checkpoint (plan_index={state.get('agent_plan_index')})")
+        completed = list(state.get("agent_outputs", {}).keys())
+        if completed:
+            print(f"   Completed agents: {' → '.join(completed)}")
+        # Use CLI prompt if explicitly provided, otherwise keep saved prompt.
+        if prompt:
+            state["human_prompt"] = prompt
+    else:
+        if resume and not checkpoint_exists(ticket_id):
+            print(f"   ⚠️  No checkpoint found for {ticket_id} — starting fresh")
+        state = new_state(ticket_id=ticket_id, prompt=prompt)
+
     graph = build()
 
     from core.tracing.langfuse import pipeline_trace, record_pipeline_output, flush
@@ -58,7 +86,7 @@ def run_pipeline(ticket_id: str, prompt: str) -> dict:
     recursion_limit = int(os.getenv("PIPELINE_RECURSION_LIMIT", "35"))
 
     try:
-        with pipeline_trace(ticket_id, prompt):
+        with pipeline_trace(ticket_id, prompt or state.get("human_prompt", "")):
             # LangGraph native streaming — emits viz events from each node chunk.
             result = stream_pipeline(graph, state, ticket_id, recursion_limit=recursion_limit)
 
@@ -87,15 +115,59 @@ def run_pipeline(ticket_id: str, prompt: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Hypertech Agentic Pipeline")
-    parser.add_argument("prompt", help="The human prompt to process")
-    parser.add_argument("--ticket", default=None, help="Ticket ID (auto-generated if omitted)")
+    parser.add_argument(
+        "prompt", nargs="?", default="",
+        help="The human prompt to process (optional when --resume)",
+    )
+    parser.add_argument(
+        "--ticket", default=None,
+        help="Ticket ID (auto-generated if omitted)",
+    )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help="Resume from a saved checkpoint",
+    )
     args = parser.parse_args()
 
-    ticket_id = args.ticket or f"HT-{uuid.uuid4().hex[:6].upper()}"
-    print(f"\n🚀 Starting pipeline | Ticket: {ticket_id}")
-    print(f"   Prompt: {args.prompt}\n")
+    from core.checkpoint.manager import list_checkpoints, exists as checkpoint_exists
 
-    result = run_pipeline(ticket_id, args.prompt)
+    # ── Resolve ticket_id and prompt ──────────────────────────────────────
+    if args.resume and not args.ticket:
+        # Find most recent checkpoint
+        checkpoints = list_checkpoints()
+        if not checkpoints:
+            print("❌ No checkpoints found (use --ticket or omit --resume to start fresh)")
+            sys.exit(1)
+        ticket_id = checkpoints[0]["ticket_id"]
+        latest = checkpoints[0]
+        prompt = args.prompt  # may be empty — checkpoint has the saved prompt
+        print(f"   Resuming most recent checkpoint: {ticket_id}")
+        print(f"   Saved at: {latest['saved_at']}")
+        if latest.get("completed_agents"):
+            print(f"   Completed agents: {' → '.join(latest['completed_agents'])}")
+    elif args.ticket:
+        ticket_id = args.ticket
+        prompt = args.prompt
+        # Auto-detect existing checkpoint
+        if not args.resume and checkpoint_exists(ticket_id):
+            print(f"   ℹ️  Found existing checkpoint for {ticket_id} — will resume")
+            print(f"   (Use a different --ticket or delete the checkpoint to start fresh)")
+    else:
+        ticket_id = f"HT-{uuid.uuid4().hex[:6].upper()}"
+        prompt = args.prompt
+
+    if not prompt and not args.resume and not checkpoint_exists(ticket_id if args.ticket else ""):
+        print("❌ A prompt is required for a new pipeline.")
+        sys.exit(1)
+
+    # ── Start ─────────────────────────────────────────────────────────────
+    is_resume = args.resume or (args.ticket and checkpoint_exists(args.ticket or ""))
+    prefix = "♻️" if is_resume else "🚀"
+    print(f"\n{prefix} Starting pipeline | Ticket: {ticket_id}")
+    if prompt:
+        print(f"   Prompt: {prompt}\n")
+
+    result = run_pipeline(ticket_id, prompt, resume=args.resume)
 
     coder_out = result.get("coder_output") or {}
 

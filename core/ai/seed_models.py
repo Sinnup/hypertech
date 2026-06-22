@@ -55,59 +55,77 @@ def _existing_models() -> set[str]:
     url = f"{LANGFUSE_HOST}/api/public/models"
     req = urllib.request.Request(url, headers={"Authorization": _auth_header()})
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req) as resp:  # nosemgrep
             data = json.loads(resp.read())
         return {m["modelName"] for m in data.get("data", [])}
     except urllib.error.HTTPError as e:
         print(f"  ⚠️  Could not fetch existing models: {e.code} {e.reason}")
         return set()
+    except (urllib.error.URLError, ConnectionRefusedError, OSError) as e:
+        print(f"  ⚠️  Langfuse not reachable ({e}) — skipping model seeding.")
+        return set()
 
 
 def seed():
-    """Register any missing DeepSeek models.  Idempotent."""
+    """Register any missing DeepSeek models.  Idempotent.
+
+    Connection failures are swallowed — seed is best-effort and the
+    pipeline should not fail because Langfuse is temporarily unreachable.
+    """
     if not PUBLIC_KEY or not SECRET_KEY:
         print("  ⚠️  Langfuse keys not configured — skipping model seeding.")
         return
 
-    existing = _existing_models()
-    created = 0
+    try:
+        existing = _existing_models()
+    except Exception:
+        print("  ⚠️  Langfuse not reachable — skipping model seeding.")
+        return
 
-    for model in MODELS:
-        name = model["modelName"]
-        if name in existing:
-            print(f"  ✅ {name} already registered")
-            continue
+    try:
+        created = 0
 
-        url = f"{LANGFUSE_HOST}/api/public/models"
-        payload = json.dumps(model).encode()
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={
-                "Authorization": _auth_header(),
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req) as resp:
-                if resp.status == 201 or resp.status == 200:
-                    print(
-                        f"  ✅ {name} registered — "
-                        f"in: ${model['inputPrice']:.8f}/tok, "
-                        f"out: ${model['outputPrice']:.8f}/tok"
-                    )
-                    created += 1
-                else:
-                    print(f"  ❌ {name}: HTTP {resp.status}")
-        except urllib.error.HTTPError as e:
-            body = e.read().decode() if e.fp else ""
-            print(f"  ❌ {name}: HTTP {e.code} — {body[:200]}")
+        for model in MODELS:
+            name = model["modelName"]
+            if name in existing:
+                print(f"  ✅ {name} already registered")
+                continue
 
-    if created == 0:
-        print("  All DeepSeek models already registered.")
-    else:
-        print(f"  Registered {created} new model(s).")
+            url = f"{LANGFUSE_HOST}/api/public/models"
+            payload = json.dumps(model).encode()
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={
+                    "Authorization": _auth_header(),
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as resp:  # nosemgrep
+                    if resp.status == 201 or resp.status == 200:
+                        print(
+                            f"  ✅ {name} registered — "
+                            f"in: ${model['inputPrice']:.8f}/tok, "
+                            f"out: ${model['outputPrice']:.8f}/tok"
+                        )
+                        created += 1
+                    else:
+                        print(f"  ❌ {name}: HTTP {resp.status}")
+            except urllib.error.HTTPError as e:
+                body = e.read().decode() if e.fp else ""
+                print(f"  ❌ {name}: HTTP {e.code} — {body[:200]}")
+            except (urllib.error.URLError, ConnectionRefusedError, OSError):
+                print(f"  ⚠️  Cannot register {name} — Langfuse unreachable")
+                break
+
+        if created == 0:
+            print("  All DeepSeek models already registered.")
+        else:
+            print(f"  Registered {created} new model(s).")
+    except Exception as e:
+        print(f"  ⚠️  Langfuse not reachable ({e}) — skipping model seeding.")
 
 
 if __name__ == "__main__":

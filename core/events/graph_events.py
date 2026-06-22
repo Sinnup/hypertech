@@ -11,10 +11,13 @@ Events are emitted by iterating ``graph.stream(state, stream_mode="updates")``
 
 import os
 import json
+import logging
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 from typing import Iterator
+
+logger = logging.getLogger(__name__)
 
 # Port where the viz server (or Slack command server with viz Blueprint) listens.
 _VIZ_PORT = int(os.getenv("VIZ_PORT", os.getenv("SLACK_COMMANDS_PORT", "8080")))
@@ -242,7 +245,8 @@ def stream_pipeline(
 ) -> dict:
     """
     Run the pipeline via LangGraph's native ``graph.stream()``, emitting
-    viz events from each chunk.
+    viz events from each chunk.  Saves checkpoints after each agent cycle
+    so partial progress survives crashes.
 
     This replaces ``graph.invoke(state)`` — the pipeline behaves identically
     but we get per-node updates from LangGraph without any custom wrappers.
@@ -250,51 +254,80 @@ def stream_pipeline(
     Returns the final PipelineState dict.
     """
     from .event_bus import event_bus
+    from core.checkpoint.manager import save as save_checkpoint
+    from core.checkpoint.manager import delete as delete_checkpoint
 
-    # -- pipeline_start ----------------------------------------------------
-    emit_event(ticket_id, "pipeline_start", {
+    # -- detect resume -----------------------------------------------------
+    is_resume = state.get("resumed_from_checkpoint", False)
+
+    # -- pipeline_start (or pipeline_resume) --------------------------------
+    emit_event(ticket_id, "pipeline_start" if not is_resume else "pipeline_resume", {
         "ticket_id": ticket_id,
         "prompt": state.get("human_prompt", ""),
         "graph": get_graph_structure(),
+        "resumed": is_resume,
     })
 
     final_state = dict(state)
     prev_node = None
 
-    # -- iterate LangGraph stream ------------------------------------------
-    # stream_mode="updates" yields {node_name: state_update} after each node.
-    for chunk in graph.stream(
-        state,
-        stream_mode="updates",
-        config={"recursion_limit": recursion_limit},
-    ):
-        for node_name, node_output in chunk.items():
-            # Set previous node to completed (if any)
-            if prev_node:
-                emit_event(ticket_id, "agent_end", {
-                    "agent": prev_node,
-                    "status": final_state.get("status", "unknown"),
+    try:
+        # -- iterate LangGraph stream ------------------------------------------
+        # stream_mode="updates" yields {node_name: state_update} after each node.
+        for chunk in graph.stream(
+            state,
+            stream_mode="updates",
+            config={"recursion_limit": recursion_limit},
+        ):
+            for node_name, node_output in chunk.items():
+                # Set previous node to completed (if any)
+                if prev_node:
+                    emit_event(ticket_id, "agent_end", {
+                        "agent": prev_node,
+                        "status": final_state.get("status", "unknown"),
+                        "timestamp": _now(),
+                    })
+
+                # Mark this node as started
+                emit_event(ticket_id, "agent_start", {
+                    "agent": node_name,
                     "timestamp": _now(),
                 })
 
-            # Mark this node as started
-            emit_event(ticket_id, "agent_start", {
-                "agent": node_name,
-                "timestamp": _now(),
-            })
+                # Merge output into final_state
+                final_state.update(node_output)
 
-            # Merge output into final_state
-            final_state.update(node_output)
+                # Orchestrator is special — scenario_classified
+                if node_name == "orchestrator":
+                    scenario = final_state.get("scenario", "poc")
+                    emit_event(ticket_id, "scenario_classified", {
+                        "scenario": scenario,
+                        "path": _path_for_scenario(scenario),
+                        "resumed": is_resume,
+                    })
 
-            # Orchestrator is special — scenario_classified
-            if node_name == "orchestrator":
-                scenario = final_state.get("scenario", "poc")
-                emit_event(ticket_id, "scenario_classified", {
-                    "scenario": scenario,
-                    "path": _path_for_scenario(scenario),
-                })
+                # -- Checkpoint: save after validation_gate, before context_packer
+                # The cycle is: agent → validation_gate → context_packer → next agent.
+                # Saving here captures the validated agent output with the correct
+                # plan index pointing to the NEXT agent to run.  context_packer
+                # (which advances the index) will re-run on resume — it's FAST tier.
+                if node_name == "validation_gate":
+                    # Only save if validation passed (not escalating)
+                    if not final_state.get("human_escalation"):
+                        save_checkpoint(ticket_id, final_state)
 
-            prev_node = node_name
+                prev_node = node_name
+
+    except BaseException:
+        # -- Emergency checkpoint on any error before propagating -----------
+        logger.warning(
+            "Pipeline error for %s — saving emergency checkpoint", ticket_id
+        )
+        try:
+            save_checkpoint(ticket_id, final_state)
+        except Exception as cp_err:
+            logger.error("Failed to save emergency checkpoint: %s", cp_err)
+        raise
 
     # -- last node completion ----------------------------------------------
     if prev_node:
@@ -303,5 +336,11 @@ def stream_pipeline(
             "status": final_state.get("status", "unknown"),
             "timestamp": _now(),
         })
+
+    # -- Clean up checkpoint on successful completion -----------------------
+    try:
+        delete_checkpoint(ticket_id)
+    except Exception:
+        logger.debug("Failed to delete checkpoint for %s", ticket_id, exc_info=True)
 
     return final_state

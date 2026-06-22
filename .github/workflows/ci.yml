@@ -105,10 +105,12 @@ jobs:
       - name: Notify Slack — dev deploy
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           curl -s -X POST "$SLACK_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"🚀 Dev deploy triggered for branch \`${{ github.ref_name }}\` (commit \`${{ github.sha }}\`)\"}"
+            -d "{\"text\": \"🚀 Dev deploy triggered for branch \`${BRANCH_NAME}\` (commit \`${COMMIT_SHA}\`)\"}"
 
   # ── Deploy to Cert (manual approval gate) ─────────────────────────────────────
   deploy_cert:
@@ -122,10 +124,11 @@ jobs:
       - name: Notify Slack — cert deploy
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           curl -s -X POST "$SLACK_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"✅ Cert deploy approved and started for \`${{ github.sha }}\`\"}"
+            -d "{\"text\": \"✅ Cert deploy approved and started for \`${COMMIT_SHA}\`\"}"
 
   # ── Deploy to Prod (manual approval gate) ─────────────────────────────────────
   deploy_prod:
@@ -139,7 +142,8 @@ jobs:
       - name: Notify Slack — prod deploy
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           curl -s -X POST "$SLACK_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"🏁 Production deploy approved and started for \`${{ github.sha }}\`\"}"
+            -d "{\"text\": \"🏁 Production deploy approved and started for \`${COMMIT_SHA}\`\"}"

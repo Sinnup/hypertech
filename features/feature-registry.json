@@ -12,5 +12,320 @@
     "branch": "main",
     "changelog_ref": "changelogs/HT-010.md",
     "last_updated": "2026-06-17T17:05:00.000000+00:00"
+  },
+  "HT-0E0FAA": {
+    "title": "new Quick POC: hello from slack",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-17T23:33:32.961887+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-0E0FAA",
+    "changelog_ref": "changelogs/HT-0E0FAA.md",
+    "last_updated": "2026-06-17T23:33:36.135142+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9hwC5QiM5wzvMrKjFs3'}"
+  },
+  "HT-88F1DD": {
+    "title": "Quick POC: hello from slack",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-17T23:40:48.554275+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-88F1DD",
+    "changelog_ref": "changelogs/HT-88F1DD.md",
+    "last_updated": "2026-06-17T23:40:50.006845+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9iVAyKUUBxFK3KW9mry'}"
+  },
+  "HT-725A8D": {
+    "title": "Quick POC: hello from slack",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-17T23:46:15.663216+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-725A8D",
+    "changelog_ref": "changelogs/HT-725A8D.md",
+    "last_updated": "2026-06-17T23:46:18.824834+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9iuQGSmtPYTkQ4BVyYL'}"
+  },
+  "HT-46142E": {
+    "title": "Quick POC: hello from slack",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-17T23:48:03.911328+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-46142E",
+    "changelog_ref": "changelogs/HT-46142E.md",
+    "last_updated": "2026-06-17T23:48:06.535399+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9j3N7geHraN8owhSqYH'}"
+  },
+  "HT-2257DD": {
+    "title": "POC: hello from slack single page",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-17T23:50:08.733868+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-2257DD",
+    "changelog_ref": "changelogs/HT-2257DD.md",
+    "last_updated": "2026-06-17T23:50:11.501736+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9jCa7WHwKGSWnQPBWzv'}"
+  },
+  "HT-241E60": {
+    "title": "POC: hello from slack landing page",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-17T23:52:25.540548+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-241E60",
+    "changelog_ref": "changelogs/HT-241E60.md",
+    "last_updated": "2026-06-17T23:53:08.972848+00:00",
+    "deploy_url": "http://localhost:63490/index.html"
+  },
+  "HT-VIZ01": {
+    "title": "Build a simple login page with email and password fields",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T00:48:10.162067+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-VIZ01",
+    "changelog_ref": "changelogs/HT-VIZ01.md",
+    "last_updated": "2026-06-18T00:48:35.985407+00:00",
+    "deploy_url": "http://localhost:63906/index.html"
+  },
+  "HT-VIZ02": {
+    "title": "Simple hello world page",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T00:55:34.760063+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-VIZ02",
+    "changelog_ref": "changelogs/HT-VIZ02.md",
+    "last_updated": "2026-06-18T00:55:50.881481+00:00",
+    "deploy_url": "http://localhost:64009/index.html"
+  },
+  "HT-241E61": {
+    "title": "Docker all-in-one setup \u2014 run and configure entire stack at once",
+    "scenario": "infrastructure",
+    "status": "backlog",
+    "created": "2026-06-18T01:03:37.757359+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-241E61",
+    "changelog_ref": "changelogs/HT-241E61.md",
+    "description": "Single docker compose up that starts ChromaDB, Langfuse (Postgres + ClickHouse + MinIO), viz server, and ngrok tunnel. Pre-configures all API keys from .env. Exposes dashboard on predictable port. See docs/viz-setup.md for context.",
+    "last_updated": "2026-06-18T01:03:37.757999+00:00"
+  },
+  "HT-76ACCD": {
+    "title": "POC: crea una landing page que muestre saludos a Elfredurst, Elriojangel, ElCesa",
+    "scenario": "auto-detect",
+    "status": "failed",
+    "created": "2026-06-18T03:01:07.895401+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-76ACCD",
+    "changelog_ref": "changelogs/HT-76ACCD.md",
+    "last_updated": "2026-06-18T03:01:11.650293+00:00",
+    "error": "Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cc9ymMz3ovBjShLcDFpCV'}"
+  },
+  "HT-17AB50": {
+    "title": "POC: crea una landing page que muestre saludos a Elfredurst, Elriojangel, ElCesa",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:08:05.078686+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-17AB50",
+    "changelog_ref": "changelogs/HT-17AB50.md",
+    "last_updated": "2026-06-18T03:08:38.418060+00:00",
+    "deploy_url": "http://localhost:65029/index.html"
+  },
+  "HT-A7F6D9": {
+    "title": "POC: crea una landing page que muestre saludos a Elfredurst, Elriojangel, ElCesa",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:20:32.197804+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-A7F6D9",
+    "changelog_ref": "changelogs/HT-A7F6D9.md",
+    "last_updated": "2026-06-18T03:21:04.584982+00:00",
+    "deploy_url": "http://localhost:65255/index.html"
+  },
+  "HT-STREAM": {
+    "title": "Build a hello world page",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:26:25.918186+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-STREAM",
+    "changelog_ref": "changelogs/HT-STREAM.md",
+    "last_updated": "2026-06-18T03:26:45.226691+00:00",
+    "deploy_url": "http://localhost:65363/index.html"
+  },
+  "HT-STREAM2": {
+    "title": "Build a simple hello world page",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:27:15.847938+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-STREAM2",
+    "changelog_ref": "changelogs/HT-STREAM2.md",
+    "last_updated": "2026-06-18T03:27:36.067978+00:00",
+    "deploy_url": "http://localhost:49266/index.html"
+  },
+  "HT-DEMO": {
+    "title": "Build a login page with email and password fields",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:30:22.509231+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-DEMO",
+    "changelog_ref": "changelogs/HT-DEMO.md",
+    "last_updated": "2026-06-18T03:30:51.245390+00:00",
+    "deploy_url": "http://localhost:49376/index.html"
+  },
+  "HT-DEMO2": {
+    "title": "Simple hello world POC page",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:35:42.219202+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-DEMO2",
+    "changelog_ref": "changelogs/HT-DEMO2.md",
+    "last_updated": "2026-06-18T03:35:57.128856+00:00",
+    "deploy_url": "http://localhost:49641/index.html"
+  },
+  "HT-LOBBY": {
+    "title": "Simple hello POC",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:41:27.785819+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-LOBBY",
+    "changelog_ref": "changelogs/HT-LOBBY.md",
+    "last_updated": "2026-06-18T03:41:52.063513+00:00",
+    "deploy_url": "http://localhost:49808/index.html"
+  },
+  "HT-4C7CFF": {
+    "title": "POC: create a basic landing page with hello world",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-18T03:59:00.214079+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-4C7CFF",
+    "changelog_ref": "changelogs/HT-4C7CFF.md",
+    "last_updated": "2026-06-18T03:59:20.151483+00:00",
+    "deploy_url": "http://localhost:50057/index.html"
+  },
+  "HT-COMPAT": {
+    "title": "Quick POC: hello world page",
+    "scenario": "poc",
+    "status": "routed_to_coder",
+    "created": "2026-06-21T16:51:06.715516+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-COMPAT",
+    "changelog_ref": "changelogs/HT-COMPAT.md",
+    "last_updated": "2026-06-21T16:51:06.716445+00:00"
+  },
+  "HT-TRACE-E585": {
+    "title": "Build a tiny hello world HTML page",
+    "scenario": "poc",
+    "status": "planned_3_agents",
+    "created": "2026-06-22T17:56:57.112787+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-TRACE-E585",
+    "changelog_ref": "changelogs/HT-TRACE-E585.md",
+    "last_updated": "2026-06-22T17:56:57.114342+00:00"
+  },
+  "HT-TRACE-0F8E": {
+    "title": "Build a tiny hello world HTML page",
+    "scenario": "poc",
+    "status": "code_generated",
+    "created": "2026-06-22T17:58:30.312598+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_web"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-TRACE-0F8E",
+    "changelog_ref": "changelogs/HT-TRACE-0F8E.md",
+    "last_updated": "2026-06-22T17:58:59.448839+00:00"
+  },
+  "HT-QUICK": {
+    "title": "test",
+    "scenario": "poc",
+    "status": "code_committed",
+    "created": "2026-06-22T18:00:08.446271+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-QUICK",
+    "changelog_ref": "changelogs/HT-QUICK.md",
+    "last_updated": "2026-06-22T18:00:40.649872+00:00"
   }
 }
