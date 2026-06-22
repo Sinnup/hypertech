@@ -14,6 +14,7 @@ from langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry import register
+from core.agent_registry.models import AgentOutput
 from core.circuit_breaker import circuit_breaker
 from core.notifications import slack
 from core.tracing.langfuse import get_client, record_generation
@@ -103,23 +104,47 @@ def run(state: PipelineState) -> PipelineState:
 
     status_emoji = {"compliant": "✅", "partial": "⚠️", "non_compliant": "❌", "unknown": "❓"}
     emoji = status_emoji.get(report["overall_status"], "❓")
-    slack.status(
-        ticket_id,
-        f"{emoji} Compliance check: *{report['overall_status'].upper()}* — "
-        f"{len(report['requirements'])} requirements, "
-        f"{len(report['compliance_gaps'])} gaps"
-    )
 
-    if report.get("human_approval_required"):
+    # ── Determine if human approval should BLOCK the pipeline ────────────
+    kb_empty = kb_result["empty"]
+    needs_approval = report.get("human_approval_required", False)
+    force_escalation = False
+
+    if kb_empty and scenario != "poc":
+        # No regulatory docs available — compliance check is unreliable.
+        # Force human review before continuing.
+        report["overall_status"] = "unknown"
+        report["human_approval_required"] = True
+        report.setdefault("compliance_gaps", []).append({
+            "regulation": "KNOWLEDGE_BASE_EMPTY",
+            "gap": "No regulatory documents found in ChromaDB. "
+                   "Run /reload-kb to ingest documents from Google Drive, "
+                   "then resume with /resume.",
+            "severity": "high",
+        })
+        needs_approval = True
+        force_escalation = True
+        emoji = "❓"
+
+    if needs_approval:
         slack.approval_request(
             ticket_id,
             stage="compliance_review",
             summary=(
                 f"*Status:* {report['overall_status']}\n"
                 f"*Gaps:* {len(report['compliance_gaps'])}\n"
+                f"{'*⚠️ KB EMPTY — no regulatory docs ingested*' if kb_empty else ''}\n"
                 f"*Summary:* {report['summary']}"
             ),
         )
+
+    slack.status(
+        ticket_id,
+        f"{emoji} Compliance check: *{report['overall_status'].upper()}* — "
+        f"{len(report['requirements'])} requirements, "
+        f"{len(report['compliance_gaps'])} gaps"
+        f"{' (KB empty — human review needed)' if kb_empty else ''}"
+    )
 
     registry_store.update_ticket(ticket_id, {
         "status": "compliance_checked",
@@ -130,10 +155,29 @@ def run(state: PipelineState) -> PipelineState:
     state["current_agent"] = "ba_compliance"
     state["next_agent"] = "ux_ui"
     state["status"] = "compliance_checked"
-    state["human_approval_required"] = report.get("human_approval_required", False)
+    state["human_approval_required"] = needs_approval
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
     state["agent_messages"].append(
         agent_message("ba_compliance", "ux_ui", "compliance_ready", ticket_id, report)
     )
+
+    # ── Store structured AgentOutput with potentially reduced confidence ─
+    confidence = report.get("confidence", 0.5)
+    if force_escalation:
+        confidence = min(confidence, 0.3)  # Force validation_gate → human_escalation
+    elif needs_approval:
+        confidence = min(confidence, 0.5)  # Below threshold, will escalate
+
+    state["agent_outputs"]["ba_compliance"] = AgentOutput(
+        status="degraded" if needs_approval else "ok",
+        data=report,
+        validation_errors=(
+            ["Knowledge base empty — regulatory documents not ingested. "
+             "Run /reload-kb and /resume when ready."]
+            if kb_empty else []
+        ),
+        confidence=confidence,
+        agent_name="ba_compliance",
+    ).model_dump()
 
     return state

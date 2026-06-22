@@ -56,23 +56,41 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
     )
 
     if needs_escalation:
-        reason = output.validation_errors[0] if output.validation_errors else (
-            f"Agent '{current}' confidence {output.confidence:.0%} is below threshold "
-            f"({CONFIDENCE_THRESHOLD_OK:.0%})"
-        )
-        state["human_escalation"] = True
-        state["human_escalation_reason"] = reason
+        # ── Check if human already approved this escalation ──────────
+        approval = _get_stored_approval(state["ticket_id"], f"escalation_{current}")
+        if not approval:
+            # Also check under the compliance_review stage name
+            approval = _get_stored_approval(state["ticket_id"], "compliance_review")
 
-        slack.approval_request(
-            state["ticket_id"],
-            stage=f"escalation_{current}",
-            summary=(
-                f"*Agent:* {current}\n"
-                f"*Confidence:* {output.confidence:.0%}\n"
-                f"*Status:* {output.status}\n"
-                f"*Reason:* {reason}"
-            ),
-        )
+        if approval and approval.get("status") == "approved":
+            # Human granted approval — override confidence and continue
+            output.status = "ok"
+            output.confidence = CONFIDENCE_THRESHOLD_OK
+            output.validation_errors = []
+            state["human_escalation"] = False
+            state["human_escalation_reason"] = None
+            slack.status(
+                state["ticket_id"],
+                f"✅ Escalation for *{current}* approved by {approval.get('approved_by', 'human')} — continuing pipeline."
+            )
+        else:
+            reason = output.validation_errors[0] if output.validation_errors else (
+                f"Agent '{current}' confidence {output.confidence:.0%} is below threshold "
+                f"({CONFIDENCE_THRESHOLD_OK:.0%})"
+            )
+            state["human_escalation"] = True
+            state["human_escalation_reason"] = reason
+
+            slack.approval_request(
+                state["ticket_id"],
+                stage=f"escalation_{current}",
+                summary=(
+                    f"*Agent:* {current}\n"
+                    f"*Confidence:* {output.confidence:.0%}\n"
+                    f"*Status:* {output.status}\n"
+                    f"*Reason:* {reason}"
+                ),
+            )
     else:
         state["human_escalation"] = False
         state["human_escalation_reason"] = None
@@ -122,3 +140,16 @@ def _infer_output(state: PipelineState, agent_name: str) -> AgentOutput | None:
             )
 
     return None
+
+
+def _get_stored_approval(ticket_id: str, stage: str) -> dict | None:
+    """Check if a human already approved this escalation via Slack.
+
+    Approval results are stored in-memory by the Slack interactive handler.
+    Returns the approval dict (with ``status`` key), or ``None`` if not found.
+    """
+    try:
+        from core.notifications.slack_commands import get_approval_result
+        return get_approval_result(ticket_id, stage)
+    except Exception:
+        return None

@@ -40,6 +40,20 @@ def run(folder_id: str = None) -> dict:
     folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
     service_account_path = get("GOOGLE_SERVICE_ACCOUNT_JSON")
 
+    # ── Validate credentials before attempting ──────────────────────────
+    if not Path(service_account_path).exists():
+        msg = (
+            f"❌ Service account file not found: {service_account_path}\n"
+            f"To fix:\n"
+            f"  1. Go to https://console.cloud.google.com/iam-admin/serviceaccounts\n"
+            f"  2. Create a service account with Drive API access\n"
+            f"  3. Download the JSON key file\n"
+            f"  4. Set GOOGLE_SERVICE_ACCOUNT_JSON=/path/to/key.json in .env\n"
+            f"  5. Share your Drive folder {folder_id} with the service account email"
+        )
+        print(msg)
+        return {"ingested": 0, "skipped": 0, "errors": [{"error": msg}]}
+
     print(f"[ingest] Loading documents from Drive folder {folder_id}...")
 
     loader = GoogleDriveLoader(
