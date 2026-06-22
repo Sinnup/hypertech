@@ -35,6 +35,20 @@ def _update_registry(ticket_id: str, updates: dict):
         _REGISTRY_PATH.write_text(json.dumps(registry, indent=2))
 
 
+def _list_poc_files(ticket_id: str) -> str:
+    """Return a human-readable summary of files in the poc directory."""
+    poc_dir = Path(f"poc/{ticket_id}")
+    if not poc_dir.exists():
+        return "(no poc directory)"
+    files = list(poc_dir.rglob("*"))
+    if not files:
+        return "(empty)"
+    # Show first 5 filenames
+    names = [str(f.relative_to(poc_dir)) for f in files[:5] if f.is_file()]
+    suffix = f" +{len(files) - 5} more" if len(files) > 5 else ""
+    return ", ".join(names) + suffix
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("", 0))
@@ -85,6 +99,65 @@ def _ngrok_tunnel(port: int) -> str | None:
             return None
 
 
+def _detect_from_filesystem(ticket_id: str, coder_output: dict) -> str:
+    """
+    Detect project type by inspecting files in ``poc/{ticket_id}/``.
+
+    Returns ``"android"``, ``"backend"``, ``"web"``, or ``""`` (unknown).
+    Prefers explicit hints from *coder_output* when available, then falls
+    back to filesystem heuristics.
+    """
+    poc_dir = Path(f"poc/{ticket_id}")
+
+    # 1. Check for explicit file hints from the coder
+    if coder_output.get("apk_path"):
+        return "android"
+    if coder_output.get("run_cmd") and ".py" in str(coder_output.get("run_cmd", "")):
+        return "backend"
+
+    # 2. Filesystem heuristics — walk poc dir for known patterns
+    if not poc_dir.exists():
+        return ""
+
+    all_files = list(poc_dir.rglob("*"))
+    all_names = {f.name.lower() for f in all_files}
+    all_suffixes = {f.suffix.lower() for f in all_files}
+
+    # Android: build.gradle(.kts), AndroidManifest.xml, .kt/.java/.kts files
+    android_indicators = {"build.gradle", "build.gradle.kts", "androidmanifest.xml"}
+    android_code = {".kt", ".java", ".kts"}
+    if android_indicators & all_names or android_code & all_suffixes:
+        return "android"
+
+    # Backend: requirements.txt, pyproject.toml, main.py in root, FastAPI patterns
+    backend_files = {"requirements.txt", "pyproject.toml", "main.py", "app.py"}
+    if backend_files & all_names:
+        return "backend"
+    # Check for a Python project directory with multiple .py files
+    py_files = [f for f in all_files if f.suffix == ".py"]
+    if len(py_files) >= 2:
+        return "backend"
+
+    # Web: index.html, .html files, tailwind.config.js
+    if "index.html" in all_names or ".html" in all_suffixes:
+        return "web"
+
+    # Check subdirectories too (coder_mobile puts files in android/)
+    for sub in poc_dir.iterdir():
+        if sub.is_dir():
+            sub_files = list(sub.rglob("*"))
+            sub_names = {f.name.lower() for f in sub_files}
+            sub_suffixes = {f.suffix.lower() for f in sub_files}
+            if android_indicators & sub_names or android_code & sub_suffixes:
+                return "android"
+            if {"requirements.txt", "main.py"} & sub_names:
+                return "backend"
+            if "index.html" in sub_names or ".html" in sub_suffixes:
+                return "web"
+
+    return ""
+
+
 @register("infra", description="Serves POC locally via HTTP server + ngrok tunnel; handles mobile project artifacts",
           tier=ModelTier.FAST, tags=["deployment", "infrastructure"])
 @observe(name="infra-agent")
@@ -92,17 +165,43 @@ def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     coder_output = state.get("coder_output") or {}
 
-    slack.status(ticket_id, "🏗️ Infra agent started — preparing local deployment...")
+    slack.status(ticket_id, "🏗️ Infra agent started — preparing deployment...")
 
-    project_type = coder_output.get("project_type", "web")
+    project_type = coder_output.get("project_type", "")
 
+    # ── Android ───────────────────────────────────────────────────────────
     if project_type == "android":
         return _handle_android(state, ticket_id, coder_output)
 
+    # ── Backend ───────────────────────────────────────────────────────────
     if project_type == "backend":
         return _handle_backend(state, ticket_id, coder_output)
 
-    return _handle_web(state, ticket_id, coder_output)
+    # ── Web (explicit) ────────────────────────────────────────────────────
+    if project_type == "web":
+        return _handle_web(state, ticket_id, coder_output)
+
+    # ── Unknown / missing project_type — detect from filesystem ──────────
+    detected = _detect_from_filesystem(ticket_id, coder_output)
+    if detected == "android":
+        return _handle_android(state, ticket_id, coder_output)
+    if detected == "backend":
+        return _handle_backend(state, ticket_id, coder_output)
+    if detected == "web":
+        return _handle_web(state, ticket_id, coder_output)
+
+    # ── Nothing found ─────────────────────────────────────────────────────
+    slack.status(
+        ticket_id,
+        f"⚠️ Infra: unknown project type '{project_type or '?'}' "
+        f"and no recognizable artifacts found in poc/{ticket_id}/. "
+        f"Skipping deployment.",
+    )
+    state["current_agent"] = "infra"
+    state["next_agent"] = None
+    state["status"] = "deploy_skipped"
+    state["last_updated"] = datetime.now(timezone.utc).isoformat()
+    return state
 
 
 def _handle_android(state: PipelineState, ticket_id: str, coder_output: dict) -> PipelineState:
@@ -172,14 +271,24 @@ def _handle_backend(state: PipelineState, ticket_id: str, coder_output: dict) ->
 
 
 def _handle_web(state: PipelineState, ticket_id: str, coder_output: dict) -> PipelineState:
-    """Serve HTML prototype via HTTP + ngrok."""
+    """Serve HTML prototype via HTTP + ngrok.
+
+    If the declared HTML file is missing, searches the poc directory for
+    any .html file before giving up.
+    """
     local_path = coder_output.get("local_path")
     if not local_path or not Path(local_path).exists():
-        fallback = Path(f"poc/{state['ticket_id']}/index.html")
-        if fallback.exists():
-            local_path = str(fallback.resolve())
+        # Search for any HTML file in the poc directory
+        poc_dir = Path(f"poc/{ticket_id}")
+        candidates = list(poc_dir.rglob("*.html")) if poc_dir.exists() else []
+        if candidates:
+            local_path = str(candidates[0].resolve())
         else:
-            slack.status(state["ticket_id"], "⚠️ Infra agent: no HTML file found — skipping deployment.")
+            slack.status(
+                state["ticket_id"],
+                f"⚠️ Infra: no HTML file found in poc/{ticket_id}/. "
+                f"Files present: {_list_poc_files(ticket_id)}",
+            )
             state["current_agent"] = "infra"
             state["next_agent"] = None
             state["status"] = "deploy_skipped"

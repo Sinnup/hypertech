@@ -143,6 +143,7 @@ def run(state: PipelineState) -> PipelineState:
     state["next_agent"] = "infra"
     state["status"] = "code_committed"
     state["coder_output"] = {
+        "project_type": "web",
         "filename": filename,
         "local_path": str(local_path.resolve()),
         "branch_url": branch_url,
