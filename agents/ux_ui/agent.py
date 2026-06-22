@@ -59,6 +59,30 @@ _WIREFRAME_PROMPT = ChatPromptTemplate.from_messages([
     ("human", "Design brief:\n{brief_json}"),
 ])
 
+_FIGMA_SPEC_SYSTEM = """You are a Figma design spec generator. Given a design brief JSON,
+produce a FIGMA_SPEC JSON that the Figma MCP server can use to create real design files.
+Include:
+- file_name: a descriptive name for the Figma file
+- pages: list of pages, each with:
+  - name: page name
+  - frames: list of frames, each with:
+    - name: frame name
+    - width, height: in pixels (use 390x844 for mobile, 1440x900 for desktop)
+    - background: hex color string like "#ff0000"
+    - elements: list of UI elements, each with:
+      - type: RECTANGLE, TEXT, FRAME, or COMPONENT
+      - name, x, y, width, height
+      - fills: array of objects with color having r,g,b,a keys (0-1 range)
+      - text: string (for TEXT elements only)
+      - cornerRadius: number (if applicable)
+    - auto_layout: object with direction (HORIZONTAL or VERTICAL), gap number, padding number
+Output ONLY valid JSON, no markdown."""
+
+_FIGMA_SPEC_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", _FIGMA_SPEC_SYSTEM),
+    ("human", "Design brief:\n{brief_json}\n\nFigma tokens to use:\n{figma_tokens}"),
+])
+
 
 @register("ux_ui", description="Generates design brief JSON + HTML wireframe from requirements",
           tier=ModelTier.BALANCED, tags=["design", "wireframe"])
@@ -76,6 +100,9 @@ def run(state: PipelineState) -> PipelineState:
     # ── Figma integration: pull design assets & tokens ──────────────────
     figma_context = ""
     figma_file_name = ""
+    file_key = ""
+    token_colors = {}
+    token_typo = {}
     figma_assets_dir = Path(f"poc/{ticket_id}/assets")
     figma = get_figma_client()
 
@@ -185,6 +212,29 @@ def run(state: PipelineState) -> PipelineState:
         )
 
     slack.status(ticket_id, f"📐 Wireframe saved at poc/{ticket_id}/wireframe.html")
+
+    # Step 3: Generate Figma design spec (for MCP-based screen creation)
+    figma_spec_path = Path(f"poc/{ticket_id}/figma_spec.json")
+    try:
+        slack.status(ticket_id, "🎨 Generating Figma design spec...")
+        figma_spec_chain = _FIGMA_SPEC_PROMPT | llm
+        figma_tokens_str = json.dumps({
+            "colors": {k: v for k, v in (token_colors.items() if figma else [])},
+            "typography": {k: v for k, v in (token_typo.items() if figma else [])},
+            "file_key": file_key if figma else "",
+        })
+        figma_spec_result = figma_spec_chain.invoke({
+            "brief_json": json.dumps(design_brief),
+            "figma_tokens": figma_tokens_str,
+        })
+        figma_spec = parse_json(figma_spec_result.content)
+        figma_spec_path.write_text(json.dumps(figma_spec, indent=2))
+        slack.status(
+            ticket_id,
+            f"📋 Figma spec saved — {len(figma_spec.get('pages', []))} page(s) ready for MCP creation"
+        )
+    except Exception as exc:
+        slack.status(ticket_id, f"⚠️ Figma spec generation failed ({exc}) — skipping.")
 
     registry_store.update_ticket(ticket_id, {
         "status": "design_ready",
