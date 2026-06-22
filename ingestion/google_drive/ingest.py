@@ -2,20 +2,33 @@
 Google Drive → ChromaDB ingestion pipeline.
 
 Reads regulation documents from a designated Drive folder, chunks them,
-embeds them via Claude Haiku, and upserts into ChromaDB.
+embeds them, and upserts into ChromaDB.
 
-Trigger: called manually, via `/reload-kb` Slack command, or on a daily schedule.
-Credentials: GOOGLE_SERVICE_ACCOUNT_JSON (path to service account JSON) in .env.
-Drive folder: GOOGLE_DRIVE_FOLDER_ID in .env.
+**Public folders** (default): uses ``gdown`` to download without credentials.
+Set ``GOOGLE_SERVICE_ACCOUNT_JSON`` in ``.env`` for private / shared-drive folders.
+
+Trigger: called manually, via ``/reload-kb`` Slack command, or on a schedule.
+Drive folder: ``GOOGLE_DRIVE_FOLDER_ID`` in ``.env``.
 """
 
 import json
 import hashlib
+import tempfile
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 
-from langchain_community.document_loaders import GoogleDriveLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import TextLoader
+
+# Prefer pdfminer (better text extraction), fall back to pypdf
+try:
+    from langchain_community.document_loaders import PDFMinerLoader as PDFLoader
+except ImportError:
+    try:
+        from langchain_community.document_loaders import PyPDFLoader as PDFLoader
+    except ImportError:
+        PDFLoader = None
 
 from core.memory import chroma
 from core.secrets.loader import get, get_optional
@@ -32,38 +45,144 @@ def _chunk_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def run(folder_id: str = None) -> dict:
-    """
-    Ingest all documents from the Drive folder into ChromaDB.
-    Returns {"ingested": int, "skipped": int, "errors": list}.
-    """
-    folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
-    service_account_path = get("GOOGLE_SERVICE_ACCOUNT_JSON")
+# ---------------------------------------------------------------------------
+# Document download — public folder via gdown, private via service account
+# ---------------------------------------------------------------------------
 
-    # ── Validate credentials before attempting ──────────────────────────
-    if not Path(service_account_path).exists():
-        msg = (
-            f"❌ Service account file not found: {service_account_path}\n"
-            f"To fix:\n"
-            f"  1. Go to https://console.cloud.google.com/iam-admin/serviceaccounts\n"
-            f"  2. Create a service account with Drive API access\n"
-            f"  3. Download the JSON key file\n"
-            f"  4. Set GOOGLE_SERVICE_ACCOUNT_JSON=/path/to/key.json in .env\n"
-            f"  5. Share your Drive folder {folder_id} with the service account email"
-        )
-        print(msg)
-        return {"ingested": 0, "skipped": 0, "errors": [{"error": msg}]}
+def _download_public_folder(folder_id: str, target_dir: str) -> list[Path]:
+    """
+    Download all files from a public Google Drive folder using ``gdown``.
+    Returns a list of downloaded file paths.
+    """
+    import gdown
 
-    print(f"[ingest] Loading documents from Drive folder {folder_id}...")
+    # gdown can download entire public folders
+    url = f"https://drive.google.com/drive/folders/{folder_id}"
+    downloaded = gdown.download_folder(
+        url=url,
+        output=target_dir,
+        quiet=False,
+        skip_download=False,
+    )
+
+    if downloaded is None:
+        return []
+
+    # gdown returns a list of file paths (or a single string for one file)
+    if isinstance(downloaded, str):
+        downloaded = [downloaded]
+    return [Path(p) for p in downloaded if Path(p).exists() and Path(p).stat().st_size > 0]
+
+
+def _download_with_service_account(folder_id: str, service_account_path: str) -> list:
+    """
+    Download files using LangChain's GoogleDriveLoader (requires service account).
+    Returns a list of LangChain Document objects.
+    """
+    from langchain_community.document_loaders import GoogleDriveLoader
 
     loader = GoogleDriveLoader(
         folder_id=folder_id,
         service_account_key=service_account_path,
         recursive=False,
     )
-    docs = loader.load()
-    print(f"[ingest] Loaded {len(docs)} documents from Drive.")
+    return loader.load()
 
+
+# ---------------------------------------------------------------------------
+# File loading
+# ---------------------------------------------------------------------------
+
+def _load_documents(file_paths: list[Path]) -> list:
+    """
+    Load downloaded files into LangChain Document objects.
+    Supports PDF, TXT, MD, JSON, CSV, DOCX.
+    """
+    docs = []
+    for path in file_paths:
+        suffix = path.suffix.lower()
+        loader = None
+
+        if suffix == ".pdf":
+            if PDFLoader is None:
+                print(f"  ⚠️  Skipping {path.name}: no PDF loader installed (pip install pdfminer.six)")
+                continue
+            loader = PDFLoader(str(path))
+        elif suffix in (".txt", ".md", ".json", ".csv", ".xml", ".html", ".htm"):
+            loader = TextLoader(str(path), encoding="utf-8")
+        else:
+            # Try text loader for unknown types
+            try:
+                loader = TextLoader(str(path), encoding="utf-8")
+            except Exception:
+                print(f"  ⚠️  Skipping unsupported file: {path.name}")
+                continue
+
+        try:
+            docs.extend(loader.load())
+        except Exception as e:
+            print(f"  ⚠️  Failed to load {path.name}: {e}")
+            continue
+
+    return docs
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
+
+def run(folder_id: str = None) -> dict:
+    """
+    Ingest all documents from the Drive folder into ChromaDB.
+
+    Uses ``gdown`` for public folders by default.  Falls back to the
+    service-account loader when ``GOOGLE_SERVICE_ACCOUNT_JSON`` points
+    to an existing file.
+    """
+    folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
+    service_account_path = get_optional("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    use_service_account = service_account_path and Path(service_account_path).exists()
+
+    print(f"[ingest] Drive folder: {folder_id}")
+    print(f"[ingest] Auth mode: {'service account' if use_service_account else 'public (no credentials)'}")
+
+    # ── Download ──────────────────────────────────────────────────────
+    tmp_dir = tempfile.mkdtemp(prefix="hypertech_ingest_")
+
+    try:
+        if use_service_account:
+            print(f"[ingest] Loading documents via service account...")
+            docs = _download_with_service_account(folder_id, service_account_path)
+        else:
+            print(f"[ingest] Downloading from public folder via gdown...")
+            file_paths = _download_public_folder(folder_id, tmp_dir)
+            if not file_paths:
+                return {
+                    "ingested": 0,
+                    "skipped": 0,
+                    "errors": [{
+                        "error": (
+                            f"No files downloaded from folder {folder_id}. "
+                            f"Is the folder public? Check: "
+                            f"https://drive.google.com/drive/folders/{folder_id}"
+                        )
+                    }],
+                }
+            print(f"[ingest] Downloaded {len(file_paths)} file(s).")
+            docs = _load_documents(file_paths)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if not docs:
+        return {
+            "ingested": 0,
+            "skipped": 0,
+            "errors": [{"error": "No documents loaded — unsupported file types or empty folder."}],
+        }
+
+    print(f"[ingest] Loaded {len(docs)} document(s).")
+
+    # ── Chunk ──────────────────────────────────────────────────────────
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=_CHUNK_SIZE,
         chunk_overlap=_CHUNK_OVERLAP,
@@ -71,6 +190,7 @@ def run(folder_id: str = None) -> dict:
     chunks = splitter.split_documents(docs)
     print(f"[ingest] Split into {len(chunks)} chunks.")
 
+    # ── Embed + Upsert ─────────────────────────────────────────────────
     ingested = 0
     skipped = 0
     errors = []
@@ -80,7 +200,9 @@ def run(folder_id: str = None) -> dict:
     for i, chunk in enumerate(chunks):
         try:
             file_id = chunk.metadata.get("id", chunk.metadata.get("source", f"doc_{i}"))
-            modified = chunk.metadata.get("modifiedTime", datetime.now(timezone.utc).isoformat())
+            modified = chunk.metadata.get(
+                "modifiedTime", datetime.now(timezone.utc).isoformat()
+            )
             doc_id = _doc_id(file_id, i)
 
             batch_docs.append(chunk.page_content)
@@ -94,7 +216,6 @@ def run(folder_id: str = None) -> dict:
             })
             ingested += 1
 
-            # Flush in batches of 50
             if len(batch_docs) >= 50:
                 chroma.upsert(batch_docs, batch_ids, batch_meta)
                 batch_docs, batch_ids, batch_meta = [], [], []
