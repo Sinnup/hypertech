@@ -77,6 +77,10 @@ class PipelineState(TypedDict):
     human_approval_required: Annotated[bool, _keep_latest]
     human_approvals: Annotated[List[HumanApproval], operator.add]
 
+    # Agent → human questions (waiting for text input)
+    pending_questions: Annotated[list, operator.add]
+    pending_answers: Annotated[list, operator.add]
+
     # Meta
     created_at: Annotated[str, _keep_latest]
     last_updated: Annotated[str, _keep_latest]
@@ -130,6 +134,8 @@ def new_state(ticket_id: str, prompt: str) -> PipelineState:
         deploy_url=None,
         human_approval_required=False,
         human_approvals=[],
+        pending_questions=[],
+        pending_answers=[],
         created_at=now,
         last_updated=now,
         error=None,

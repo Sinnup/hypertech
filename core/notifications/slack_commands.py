@@ -73,6 +73,8 @@ def slack_commands():
         return _handle_switch_provider(text, user_id)
     if command == "/new":
         return _handle_new(text, user_id)
+    if command == "/answer":
+        return _handle_answer(text, user_id)
     if command == "/resume":
         return _handle_resume(text, user_id)
     if command == "/checkpoints":
@@ -419,6 +421,118 @@ def _handle_checkpoints():
 
     lines.append(f"\nResume with: `/resume <ticket_id>`")
     return jsonify({"text": "\n".join(lines)}), 200
+
+
+# ---------------------------------------------------------------------------
+# /answer — respond to an agent's question
+# ---------------------------------------------------------------------------
+
+def _handle_answer(text: str, user_id: str):
+    """
+    Answer a question from an agent and optionally resume the pipeline.
+
+    Usage: /answer HT-XXXXXX <your response text>
+
+    The answer is stored and can be read by the agent on the next /resume.
+    Include ``--resume`` to auto-resume after answering::
+
+        /answer HT-XXXXXX --resume Use Material Design 3 with dark theme
+    """
+    parts = text.strip().split(maxsplit=1)
+    if not parts or not parts[0].startswith("HT-"):
+        return jsonify({
+            "text": (
+                "Usage: `/answer HT-XXXXXX <your response>`\n"
+                "Add `--resume` to continue the pipeline after answering:\n"
+                "`/answer HT-XXXXXX --resume Use Material Design 3`"
+            )
+        }), 200
+
+    ticket_id = parts[0]
+    response_text = parts[1] if len(parts) > 1 else ""
+
+    # Check for --resume flag
+    do_resume = response_text.startswith("--resume ")
+    if do_resume:
+        response_text = response_text[9:]  # strip "--resume "
+
+    if not response_text:
+        return jsonify({
+            "text": "Please include your response after the ticket ID.\n"
+                    "Usage: `/answer HT-XXXXXX <your response>`"
+        }), 200
+
+    # Store the answer in checkpoint state
+    answer = {
+        "from_user": user_id,
+        "text": response_text,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Store in approval results so validation_gate can check it
+    key = f"{ticket_id}|agent_question"
+    _approval_results[key] = {
+        "ticket_id": ticket_id,
+        "stage": "agent_question",
+        "status": "approved",  # answering = approving the question
+        "approved_by": user_id,
+        "comment": response_text,
+        "at": answer["at"],
+    }
+
+    # Signal any waiting circuit breaker
+    evt = _approval_events.get(key)
+    if evt:
+        evt.set()
+
+    # Also store in the checkpoint for persistence
+    try:
+        from core.checkpoint.manager import load as cp_load, save as cp_save
+        cp = cp_load(ticket_id)
+        if cp:
+            answers = cp.get("pending_answers", [])
+            answers.append(answer)
+            cp["pending_answers"] = answers
+            cp_save(ticket_id, cp)
+    except Exception:
+        pass  # best-effort — answer is also in _approval_results
+
+    if do_resume:
+        # Kick off resume in background
+        def _run():
+            try:
+                from main import run_pipeline
+                result = run_pipeline(ticket_id, "", resume=True)
+                status = result.get("status", "?")
+                slack.alert(
+                    f"✅ *Pipeline {ticket_id} resumed with answer*\n"
+                    f"*Response:* {response_text[:100]}\n"
+                    f"*Status:* {status}",
+                    channel="#pipeline-alerts",
+                )
+            except Exception as e:
+                slack.alert(
+                    f"❌ *Resume failed for {ticket_id}*: {e}",
+                    channel="#pipeline-alerts",
+                )
+
+        Thread(target=_run, daemon=True).start()
+
+        return jsonify({
+            "text": (
+                f"💬 *Answer recorded for {ticket_id}*\n"
+                f"*Your response:* {response_text[:150]}\n"
+                f"♻️ Pipeline automatically resumed."
+            )
+        }), 200
+
+    return jsonify({
+        "text": (
+            f"💬 *Answer recorded for {ticket_id}*\n"
+            f"*Your response:* {response_text[:150]}\n"
+            f"Type `/resume {ticket_id}` to continue the pipeline with your answer."
+        )
+    }), 200
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ asks clarifying questions via Slack attributed to downstream agents.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from langfuse import observe
@@ -38,7 +39,18 @@ _PLANS = {
         "architect", "design_synthesizer", "{coder}",
         "pr_review", "security", "test_generator", "devops", "infra",
     ],
+    # presales / GTM: sales deliverables (no code-review / security loop)
+    "presales": [
+        "orchestrator", "estimator", "infra",
+    ],
 }
+
+# GTM / pre-sales intent keywords (used by _is_presales)
+_GTM_KEYWORDS = [
+    "proposal", "propuesta", "rfp", "quote", "cotización", "cotizacion",
+    "estimate", "estimación", "estimacion", "pricing", "precio", "roi",
+    "pitch", "prospect", "prospecto", "presupuesto", "sales",
+]
 
 # Keyword sets for prompt-based specialization
 _MOBILE_KEYWORDS = [
@@ -126,7 +138,12 @@ def run(state: PipelineState) -> PipelineState:
 
     # ---- Step 3: ask clarifying questions in demo mode --------------------
     if demo_questions:
+        # Store questions so they appear in the escalation message
+        state["pending_questions"] = demo_questions
         _ask_demo_questions(ticket_id, demo_questions)
+        # Lower confidence to trigger human_escalation — pipeline waits
+        # for user to answer via /answer HT-XXX --resume <response>
+        confidence = min(confidence, 0.5)
 
     # ---- Step 4: update feature registry ----------------------------------
     registry_store.create_ticket(ticket_id, {
@@ -188,6 +205,10 @@ def _build_plan(scenario: str, prompt: str) -> list[str]:
     Internal: BA → design → code → test → infra.
     Production: full pipeline with review + security + CI/CD loops.
     """
+    # Pre-sales / GTM intent short-circuits to the sales-deliverable plan.
+    if scenario == "presales" or _is_presales(prompt):
+        return list(_PLANS["presales"])
+
     coder = _pick_coder(prompt)
 
     if scenario == "poc":
@@ -196,6 +217,16 @@ def _build_plan(scenario: str, prompt: str) -> list[str]:
     # Expand the template — replace "{coder}" placeholder
     template = list(_PLANS.get(scenario, _PLANS["poc"]))
     return ["orchestrator"] + [coder if a == "{coder}" else a for a in template[1:]]
+
+
+def _is_presales(prompt: str) -> bool:
+    """True when the prompt is a sales/GTM ask (proposal, quote, ROI, etc.).
+
+    Uses a leading word boundary so short tokens like "roi" don't match inside
+    unrelated words (e.g. "android"), while still allowing Spanish plurals.
+    """
+    p = prompt.lower()
+    return any(re.search(r"\b" + re.escape(kw), p) for kw in _GTM_KEYWORDS)
 
 
 def _pick_coder(prompt: str) -> str:

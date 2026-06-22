@@ -60,6 +60,9 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
         approval = _get_stored_approval(state["ticket_id"], f"escalation_{current}")
         if not approval:
             approval = _get_stored_approval(state["ticket_id"], "compliance_review")
+        if not approval:
+            # Check for /answer command responses
+            approval = _get_stored_approval(state["ticket_id"], "agent_question")
 
         if approval:
             status = approval.get("status", "")
@@ -71,10 +74,27 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
                 output.validation_errors = []
                 state["human_escalation"] = False
                 state["human_escalation_reason"] = None
+
+                # If there's an answer/comment, store it for agents to read
+                comment = approval.get("comment", "")
+                if comment:
+                    answer = {
+                        "from_user": approval.get("approved_by", "unknown"),
+                        "text": comment,
+                        "at": approval.get("at", ""),
+                    }
+                    answers = state.get("pending_answers", [])
+                    answers.append(answer)
+                    state["pending_answers"] = answers
+                    # Clear the questions since they've been answered
+                    state["pending_questions"] = []
+
                 slack.status(
                     state["ticket_id"],
                     f"✅ Escalation for *{current}* approved by "
-                    f"{approval.get('approved_by', 'human')} — continuing pipeline."
+                    f"{approval.get('approved_by', 'human')}"
+                    f"{' — answer: ' + comment[:80] if comment else ''}"
+                    f" — continuing pipeline."
                 )
 
             elif status == "rejected":
@@ -117,15 +137,28 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
             state["human_escalation"] = True
             state["human_escalation_reason"] = reason
 
+            # Build summary with any pending questions
+            summary = (
+                f"*Agent:* {current}\n"
+                f"*Confidence:* {output.confidence:.0%}\n"
+                f"*Status:* {output.status}\n"
+                f"*Reason:* {reason}"
+            )
+
+            # Include any pending agent questions
+            questions = state.get("pending_questions", [])
+            if questions:
+                q_lines = "\n".join(
+                    f"• *{q.get('from_agent', 'agent').title()} asks:* {q.get('question', '?')}"
+                    for q in questions
+                )
+                summary += f"\n\n*Questions:*\n{q_lines}"
+                summary += f"\n\n_Respond with:_ `/answer {state['ticket_id']} --resume <your response>`"
+
             slack.approval_request(
                 state["ticket_id"],
                 stage=f"escalation_{current}",
-                summary=(
-                    f"*Agent:* {current}\n"
-                    f"*Confidence:* {output.confidence:.0%}\n"
-                    f"*Status:* {output.status}\n"
-                    f"*Reason:* {reason}"
-                ),
+                summary=summary,
             )
     else:
         state["human_escalation"] = False
