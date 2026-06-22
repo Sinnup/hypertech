@@ -64,8 +64,8 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
             # Check for /answer command responses
             approval = _get_stored_approval(state["ticket_id"], "agent_question")
 
-        if approval:
-            status = approval.get("status", "")
+        if approval and approval.get("status"):
+            status = approval["status"]
 
             if status == "approved":
                 # Human granted approval — override confidence and continue
@@ -86,7 +86,6 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
                     answers = state.get("pending_answers", [])
                     answers.append(answer)
                     state["pending_answers"] = answers
-                    # Clear the questions since they've been answered
                     state["pending_questions"] = []
 
                 slack.status(
@@ -126,6 +125,13 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
                 slack.status(
                     state["ticket_id"],
                     f"🔄 Changes requested for *{current}* — see Slack thread."
+                )
+
+            else:
+                # Unknown status — escalate to be safe
+                state["human_escalation"] = True
+                state["human_escalation_reason"] = (
+                    f"Unknown approval status '{status}' — escalating for human review."
                 )
 
         else:
