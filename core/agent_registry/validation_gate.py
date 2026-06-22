@@ -56,24 +56,60 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
     )
 
     if needs_escalation:
-        # ── Check if human already approved this escalation ──────────
+        # ── Check if human already responded to this escalation ───────
         approval = _get_stored_approval(state["ticket_id"], f"escalation_{current}")
         if not approval:
-            # Also check under the compliance_review stage name
             approval = _get_stored_approval(state["ticket_id"], "compliance_review")
 
-        if approval and approval.get("status") == "approved":
-            # Human granted approval — override confidence and continue
-            output.status = "ok"
-            output.confidence = CONFIDENCE_THRESHOLD_OK
-            output.validation_errors = []
-            state["human_escalation"] = False
-            state["human_escalation_reason"] = None
-            slack.status(
-                state["ticket_id"],
-                f"✅ Escalation for *{current}* approved by {approval.get('approved_by', 'human')} — continuing pipeline."
-            )
+        if approval:
+            status = approval.get("status", "")
+
+            if status == "approved":
+                # Human granted approval — override confidence and continue
+                output.status = "ok"
+                output.confidence = CONFIDENCE_THRESHOLD_OK
+                output.validation_errors = []
+                state["human_escalation"] = False
+                state["human_escalation_reason"] = None
+                slack.status(
+                    state["ticket_id"],
+                    f"✅ Escalation for *{current}* approved by "
+                    f"{approval.get('approved_by', 'human')} — continuing pipeline."
+                )
+
+            elif status == "rejected":
+                # Human rejected — permanently fail, don't re-escalate
+                output.status = "failed"
+                output.validation_errors.insert(0, (
+                    f"❌ Compliance review REJECTED by {approval.get('approved_by', 'human')}. "
+                    f"Pipeline cannot continue."
+                ))
+                state["human_escalation"] = True
+                state["human_escalation_reason"] = output.validation_errors[0]
+                state["status"] = "failed"
+                slack.alert(
+                    f"🚫 *Pipeline {state['ticket_id']} rejected*\n"
+                    f"*Agent:* {current}\n"
+                    f"*Rejected by:* {approval.get('approved_by', 'unknown')}\n"
+                    f"*Comment:* {approval.get('comment', 'none')}\n"
+                    f"The pipeline is permanently blocked. Create a new ticket to restart.",
+                    channel="#pipeline-alerts",
+                )
+
+            elif status == "changes_requested":
+                # Human wants changes — escalate with their feedback
+                comment = approval.get("comment", "No details provided.")
+                state["human_escalation"] = True
+                state["human_escalation_reason"] = (
+                    f"Changes requested by {approval.get('approved_by', 'human')}: {comment}"
+                )
+                slack.status(
+                    state["ticket_id"],
+                    f"🔄 Changes requested for *{current}* — see Slack thread."
+                )
+
         else:
+            # No human response yet — escalate and wait
             reason = output.validation_errors[0] if output.validation_errors else (
                 f"Agent '{current}' confidence {output.confidence:.0%} is below threshold "
                 f"({CONFIDENCE_THRESHOLD_OK:.0%})"
