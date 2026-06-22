@@ -110,11 +110,17 @@ def run(state: PipelineState) -> PipelineState:
     needs_approval = report.get("human_approval_required", False)
     force_escalation = False
 
+    # For non-POC scenarios, compliance review is ALWAYS human-gated.
+    # The LLM provides analysis, but the human makes the final call.
+    if scenario != "poc":
+        needs_approval = True
+        # Force confidence low enough to trigger validation_gate → human_escalation
+        force_escalation = True
+        report["human_approval_required"] = True
+
     if kb_empty and scenario != "poc":
         # No regulatory docs available — compliance check is unreliable.
-        # Force human review before continuing.
         report["overall_status"] = "unknown"
-        report["human_approval_required"] = True
         report.setdefault("compliance_gaps", []).append({
             "regulation": "KNOWLEDGE_BASE_EMPTY",
             "gap": "No regulatory documents found in ChromaDB. "
@@ -122,8 +128,6 @@ def run(state: PipelineState) -> PipelineState:
                    "then resume with /resume.",
             "severity": "high",
         })
-        needs_approval = True
-        force_escalation = True
         emoji = "❓"
 
     if needs_approval:
