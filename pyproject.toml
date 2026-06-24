@@ -52,6 +52,11 @@ hypertech = "main:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+# Application (not a library) — ship the whole project root
+only-include = ["."]
+artifacts = ["*.py", "*.md", "*.txt", "*.json", "*.yml", "*.yaml", "*.lock"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",
@@ -59,6 +64,11 @@ dev = [
     "ruff>=0.8",
     "semgrep",
 ]
+
+[tool.uv]
+# onnxruntime ≥1.24 dropped macOS x86_64 wheels (arm64 + linux only).
+# chromadb depends on it transitively, so pin the last compatible version.
+constraint-dependencies = ["onnxruntime==1.23.2"]
 
 [tool.ruff]
 target-version = "py311"
