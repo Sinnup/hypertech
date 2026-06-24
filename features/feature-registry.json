@@ -648,5 +648,19 @@
     "branch": "feature/HT-25AF19",
     "changelog_ref": "changelogs/HT-25AF19.md",
     "last_updated": "2026-06-24T16:20:24.538292+00:00"
+  },
+  "HT-383C92": {
+    "title": "uv dependency management \u2014 fast reproducible Python packages",
+    "scenario": "feature",
+    "status": "in_progress",
+    "created": "2026-06-24T18:40:48.851380+00:00",
+    "agents_involved": [
+      "infra",
+      "developer-tooling"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-383C92",
+    "changelog_ref": "changelogs/HT-383C92.md",
+    "last_updated": "2026-06-24T18:40:48.852423+00:00"
   }
 }

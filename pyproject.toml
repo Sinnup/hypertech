@@ -1,0 +1,77 @@
+[project]
+name = "hypertech"
+version = "0.6.0"
+description = "AI-driven software delivery pipeline — prompt → requirements → design → code → test → deploy"
+readme = "CLAUDE.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Hypertech" }
+]
+keywords = ["agentic", "sdlc", "langgraph", "llm", "pipeline"]
+
+dependencies = [
+    "langgraph",
+    "langchain",
+    "langchain-anthropic",
+    "langchain-deepseek>=1.1.0",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "chromadb",
+    "python-dotenv",
+    "slack-sdk",
+    "langfuse>=4,<5",
+    "langsmith",
+    "requests",
+    "flask",
+    "google-api-python-client",
+    "google-auth",
+    "google-auth-httplib2",
+    "filelock",
+    "pydantic>=2.0,<3.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio",
+    "ruff>=0.8",
+    "semgrep",
+]
+test = [
+    "pytest>=8",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+hypertech = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio",
+    "ruff>=0.8",
+    "semgrep",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]

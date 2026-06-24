@@ -151,6 +151,21 @@ Set `AI_PROVIDER=claude` (default) or `AI_PROVIDER=deepseek` in `.env`.
 All agents use `get_llm(tier)` from `core/ai/factory.py` — never hardcode a model.
 See [[ai-provider-abstraction]] for adding new providers.
 
+## Development Environment
+
+```bash
+# Python deps — uv (Astral, Rust) replaces pip.  10-100× faster, reproducible.
+uv venv && uv sync            # create .venv + install all deps from uv.lock
+uv sync --dev                 # same + dev tools (pytest, ruff, semgrep)
+uv add <package>              # add a new runtime dependency
+uv add --dev <package>        # add a dev-only dependency
+uv lock --upgrade-package X   # bump a single package
+
+# Rebuild lock when requirements.txt changes:
+uv lock                       # regenerates uv.lock from pyproject.toml
+uv export > requirements.txt  # keep requirements.txt for Docker/CI
+```
+
 ## Infrastructure
 
 ```bash
