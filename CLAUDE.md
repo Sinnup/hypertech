@@ -163,6 +163,7 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 ## Key Conventions
 
 - **Q&A mode**: When the user asks a question, ONLY answer — no file creation, no implementation, no side effects. Wait for "proceed", "go ahead", "do it", or similar before acting.
+- **Versioning gate**: Before making ANY new code, read `.claude/agents/versioning.md` — every feature needs a ticket, branch, changelog, and registry entry.
 - **State**: TypedDict `PipelineState` in `core/state/pipeline_state.py` — all agents read/write it
 - **Tracing**: v4.8.1 OTEL-based — `@observe` on agents, `pipeline_trace()` root span in `main.py`
 - **Parsing**: `core/ai/parsing.py` handles ``` fences and `<think>` blocks
@@ -178,10 +179,10 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 
 ## Agent Specialists
 
+- **`.claude/agents/versioning.md`** — **READ FIRST before any code change.** Branch strategy, feature lifecycle, commit conventions, pre-code checklist.
 - `.claude/agents/architect.md` — Architecture design + system patterns
 - `.claude/agents/developer.md` — Coding standards + conventions
 - `.claude/agents/qa.md` — Testing + quality gates
-- `.claude/agents/versioning.md` — Branching + changelog + release
 
 ## Memory
 
