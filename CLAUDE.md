@@ -160,6 +160,31 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 - `.env` at project root for secrets (ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, LANGFUSE_*)
 - `core/secrets/loader.py` reads `.env` via python-dotenv
 
+## MCP Servers
+
+### Figma MCP (`https://mcp.figma.com/mcp`)
+
+**Rules** (per ``figma-use`` skill):
+
+- The Figma MCP server provides an assets endpoint which can serve image and SVG assets.
+- IMPORTANT: If the Figma MCP server returns a localhost source for an image or SVG, use that source directly.
+- IMPORTANT: DO NOT import/add new icon packages — all assets should be in the Figma payload.
+- IMPORTANT: Do NOT use or create placeholders if a localhost source is provided.
+
+**Required flow (do not skip):**
+
+1. ``get_design_context`` — fetch structured React+Tailwind representation for the exact node(s).
+2. If the response is too large or truncated, run ``get_metadata`` for the high-level node map and re-fetch only required nodes.
+3. ``get_screenshot`` — visual reference of the node variant being implemented.
+4. Only after both ``get_design_context`` and ``get_screenshot``, download assets and start implementation.
+5. Translate output (React+Tailwind) into this project's conventions, styles, and framework. Reuse project's color tokens, components, and typography wherever possible.
+6. Validate against Figma for 1:1 look and behavior before marking complete.
+
+**Write-to-canvas flow:** ``use_figma`` (Plugin API) writes to Figma files. The ``figma-use`` skill is **MANDATORY** before every ``use_figma`` call — never call it directly. ``figma-generate-design`` is for building screens from code using the design system.
+
+**Dual approach:** Interactive (MCP via Claude Code) for design work; REST API (``core/integrations/figma.py``) for autonomous pipeline extraction.
+**Config:** ``.mcp.json`` (committed), MCP auth via OAuth on first tool call.
+
 ## Key Conventions
 
 - **Q&A mode**: When the user asks a question, ONLY answer — no file creation, no implementation, no side effects. Wait for "proceed", "go ahead", "do it", or similar before acting.
@@ -172,7 +197,10 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 
 ## Available Skills
 
+- **figma** (`~/.claude/skills/figma/`) — Figma MCP server: `get_design_context`, `use_figma`, `get_screenshot`, `search_design_system`. ``figma-use`` is MANDATORY before every `use_figma` call.
 - **langfuse** (`~/.claude/skills/langfuse/skills/`) — Query/manage Langfuse traces, prompts, datasets
+- **langchain** (`~/.claude/skills/langchain-skills/`) — LangChain/LangGraph agent patterns, persistence, HITL
+- **langsmith** (`~/.claude/skills/langsmith-skills/`) — LangSmith tracing, datasets, evaluators. For LangGraph apps, tracing is automatic — just set env vars.
 - **deepseek** (`~/.claude/skills/deepseek/`) — DeepSeek agent patterns and best practices
 - **anthropic** (`~/.claude/skills/anthropic/skills/`) — Claude API patterns, web artifacts builder
 - `.claude/skills.md` has detailed when-to-use guidance

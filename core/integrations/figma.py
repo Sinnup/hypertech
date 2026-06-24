@@ -1,5 +1,27 @@
 """
-Figma REST API client — fetch design files, export assets, extract tokens.
+Figma integration — dual interface: MCP server (interactive) + REST API (autonomous).
+
+**Interactive (Claude Code / IDE):**
+  Uses the Figma MCP server at ``https://mcp.figma.com/mcp``.  Tools:
+  ``get_design_context`` (structured React+Tailwind), ``get_screenshot``,
+  ``get_variable_defs``, ``use_figma`` (Plugin API), ``search_design_system``.
+
+  Required flow (per ``figma-use`` skill)::
+
+      1. get_design_context  → structured representation for the exact node(s)
+      2. get_screenshot       → visual reference of the node variant
+      3. Download assets      → via assets endpoint
+      4. Implement            → translate into project conventions
+
+  **Skill reference:** ``~/.claude/skills/figma/`` — ``figma-use``, ``figma-generate-design``,
+  ``figma-code-connect``, ``figma-generate-library``, ``figma-swiftui``.
+  The ``figma-use`` skill is MANDATORY before every ``use_figma`` tool call.
+
+**Autonomous (pipeline):**
+  Uses the Figma REST API (``https://api.figma.com/v1``) with
+  ``FIGMA_API_KEY`` + ``FIGMA_PROJECT_ID`` from ``.env``.  This class provides
+  programmatic access for the UX/UI agent to fetch files, extract design tokens,
+  and export screen assets without human interaction.
 
 Credentials: ``FIGMA_API_KEY`` and ``FIGMA_PROJECT_ID`` in ``.env``.
 
@@ -13,6 +35,7 @@ Usage::
 """
 
 import json
+import time
 import requests
 from pathlib import Path
 from typing import Optional
@@ -20,6 +43,11 @@ from typing import Optional
 from core.secrets.loader import get_optional
 
 BASE_URL = "https://api.figma.com/v1"
+
+# Figma's rate limit is ~120 req/min for most endpoints,
+# but document downloads are heavier.  Pause between calls
+# when a 429 response is received.
+_RATE_LIMIT_PAUSE = 3.0  # seconds
 
 
 class FigmaClient:
@@ -42,6 +70,31 @@ class FigmaClient:
         return self._session
 
     # ------------------------------------------------------------------
+    # Internal — rate-limit aware HTTP helpers
+    # ------------------------------------------------------------------
+
+    def _get(self, url: str, **kwargs) -> requests.Response:
+        """
+        GET with automatic 429 retry.  Pauses and retries up to 3 times
+        when Figma rate-limits, respecting the ``Retry-After`` header if
+        present.
+        """
+        max_retries = 3
+        for attempt in range(max_retries):
+            resp = self.session.get(url, **kwargs)
+            if resp.status_code == 429 and attempt < max_retries - 1:
+                retry_after = resp.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else _RATE_LIMIT_PAUSE * (attempt + 1)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp
+        # Last attempt — let raise_for_status handle it
+        resp = self.session.get(url, **kwargs)
+        resp.raise_for_status()
+        return resp
+
+    # ------------------------------------------------------------------
     # Project & files
     # ------------------------------------------------------------------
 
@@ -50,24 +103,21 @@ class FigmaClient:
         if not self.configured:
             return []
         url = f"{BASE_URL}/projects/{self.project_id}/files"
-        resp = self.session.get(url, timeout=15)
-        resp.raise_for_status()
+        resp = self._get(url, timeout=15)
         return resp.json().get("files", [])
 
     def get_file(self, file_key: str, depth: int = 2) -> dict:
         """Return the full document tree for a Figma file."""
         url = f"{BASE_URL}/files/{file_key}"
         params = {"depth": depth}
-        resp = self.session.get(url, params=params, timeout=20)
-        resp.raise_for_status()
+        resp = self._get(url, params=params, timeout=20)
         return resp.json()
 
     def get_file_nodes(self, file_key: str, node_ids: list[str]) -> dict:
         """Return specific nodes from a Figma file."""
         url = f"{BASE_URL}/files/{file_key}/nodes"
         params = {"ids": ",".join(node_ids)}
-        resp = self.session.get(url, params=params, timeout=20)
-        resp.raise_for_status()
+        resp = self._get(url, params=params, timeout=20)
         return resp.json()
 
     # ------------------------------------------------------------------
@@ -84,12 +134,12 @@ class FigmaClient:
         """Export a single node as an image.  Returns raw bytes."""
         url = f"{BASE_URL}/images/{file_key}"
         params = {"ids": node_id, "format": format, "scale": scale}
-        resp = self.session.get(url, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = self._get(url, params=params, timeout=30)
         images = resp.json().get("images", {})
         image_url = images.get(node_id)
         if not image_url:
             return None
+        # Image CDN URL — not rate-limited by Figma API
         img_resp = self.session.get(image_url, timeout=30)
         img_resp.raise_for_status()
         return img_resp.content
@@ -137,6 +187,15 @@ class FigmaClient:
 
         tokens = {"colors": {}, "typography": {}, "spacing": [], "radii": [], "shadows": []}
         self._walk_nodes(doc, tokens)
+        return tokens
+
+    def extract_tokens_from_document(self, document: dict) -> dict:
+        """
+        Extract design tokens from an already-loaded Figma document node
+        (no API call).  Useful for testing and offline token extraction.
+        """
+        tokens = {"colors": {}, "typography": {}, "spacing": [], "radii": [], "shadows": []}
+        self._walk_nodes(document, tokens)
         return tokens
 
     def _walk_nodes(self, node: dict, tokens: dict):
@@ -209,7 +268,7 @@ class FigmaClient:
     def get_components(self, file_key: str) -> list[dict]:
         """Return all components defined in a Figma file."""
         url = f"{BASE_URL}/files/{file_key}/components"
-        resp = self.session.get(url, timeout=15)
+        resp = self._get(url, timeout=15)
         resp.raise_for_status()
         return resp.json().get("meta", {}).get("components", [])
 
