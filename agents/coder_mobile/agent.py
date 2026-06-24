@@ -17,6 +17,7 @@ from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
+from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.agent_registry import register
@@ -76,6 +77,7 @@ _PROMPT = ChatPromptTemplate.from_messages([
     tags=["code-generation", "android", "mobile"],
 )
 @observe(name="coder-mobile-agent")
+@traceable(name="coder_mobile", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     prompt = state["human_prompt"]

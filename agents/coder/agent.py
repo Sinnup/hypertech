@@ -12,6 +12,7 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
+from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
@@ -98,6 +99,7 @@ def _generate_html(prompt: str) -> str:
 @register("coder", description="Generates POC code (HTML/JS), commits to GitHub, saves locally",
           tier=ModelTier.BALANCED, tags=["code-generation"])
 @observe(name="coder-agent")
+@traceable(name="coder", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     prompt = state["human_prompt"]

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
+from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
@@ -78,6 +79,7 @@ def _format_kb_hits(hits: list) -> str:
 @register("ba_compliance", description="Extracts requirements, validates against fintech regulations via ChromaDB RAG",
           tier=ModelTier.BALANCED, tags=["analysis", "compliance", "rag"])
 @observe(name="ba-compliance-agent")
+@traceable(name="ba_compliance", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     prompt = state["human_prompt"]

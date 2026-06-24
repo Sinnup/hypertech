@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
+from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.agent_registry import register
@@ -55,6 +56,7 @@ _PROMPT = ChatPromptTemplate.from_messages([
     tags=["synthesis", "design"],
 )
 @observe(name="design-synthesizer-agent")
+@traceable(name="design_synthesizer", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     compliance = state.get("compliance_report") or {}

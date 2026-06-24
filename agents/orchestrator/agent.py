@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timezone
 
 from langfuse import observe
+from langsmith import traceable
 from core.ai import ModelTier, get_llm, get_model_id, parse_json
 from core.agent_registry import register
 from core.agent_registry.models import AgentOutput
@@ -83,6 +84,7 @@ _BACKEND_KEYWORDS = [
     tags=["routing", "entry"],
 )
 @observe(name="orchestrator-agent")
+@traceable(name="orchestrator", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
 

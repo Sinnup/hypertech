@@ -5,6 +5,7 @@ Returns the top-N relevant document chunks with source metadata.
 """
 
 from langfuse import observe
+from langsmith import traceable
 from core.tracing.langfuse import get_client
 from core.memory import chroma
 
