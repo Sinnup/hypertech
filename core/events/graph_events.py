@@ -271,13 +271,20 @@ def stream_pipeline(
     final_state = dict(state)
     prev_node = None
 
+    # -- LangSmith tracer (LangGraph-native callback for topology visibility) ---
+    from core.tracing.langsmith import get_tracer as get_langsmith_tracer
+    tracer = get_langsmith_tracer()
+
     try:
         # -- iterate LangGraph stream ------------------------------------------
         # stream_mode="updates" yields {node_name: state_update} after each node.
+        config: dict = {"recursion_limit": recursion_limit}
+        if tracer:
+            config["callbacks"] = [tracer]
         for chunk in graph.stream(
             state,
             stream_mode="updates",
-            config={"recursion_limit": recursion_limit},
+            config=config,
         ):
             for node_name, node_output in chunk.items():
                 # Set previous node to completed (if any)

@@ -9,6 +9,7 @@ chromadb
 python-dotenv
 slack-sdk
 langfuse>=4,<5
+langsmith
 requests
 flask
 google-api-python-client
@@ -16,3 +17,4 @@ google-auth
 google-auth-httplib2
 filelock
 pydantic>=2.0,<3.0
+pyyaml>=6.0
