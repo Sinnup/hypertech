@@ -140,7 +140,7 @@ Atomic writes via `.tmp` → rename (never corrupts on partial write).
 
 ## AI Providers
 
-Set `AI_PROVIDER=claude` (default) or `AI_PROVIDER=deepseek` in `.env`.
+Set `AI_PROVIDER=deepseek` (default) or `AI_PROVIDER=claude` in `.env`.
 
 | Tier | Claude | DeepSeek |
 |------|--------|----------|

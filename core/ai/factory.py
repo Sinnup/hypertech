@@ -2,7 +2,7 @@
 AI provider factory — selects and constructs the right LLM for the active
 provider at runtime, keyed off the ``AI_PROVIDER`` env var.
 
-Default is ``"claude"`` so existing deployments are unchanged.
+Default is ``"deepseek"`` — Claude is a secondary fallback when available.
 """
 
 import os
@@ -16,7 +16,7 @@ from core.secrets.loader import get
 
 def get_provider() -> str:
     """Return the active provider name.  Defaults to ``"claude"``."""
-    return os.getenv("AI_PROVIDER", "claude").strip().lower()
+    return os.getenv("AI_PROVIDER", "deepseek").strip().lower()
 
 
 def get_model_id(tier: ModelTier) -> str:
