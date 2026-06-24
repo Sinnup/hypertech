@@ -17,7 +17,6 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
-from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.agent_registry import register
@@ -182,7 +181,6 @@ _WORKFLOWS = {
     tags=["devops", "cicd", "github-actions"],
 )
 @observe(name="devops-agent")
-@traceable(name="devops", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     prompt = state["human_prompt"]

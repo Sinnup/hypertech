@@ -18,7 +18,6 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
-from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.agent_registry import register
@@ -123,7 +122,6 @@ _REVIEW_PROMPT = ChatPromptTemplate.from_messages([
     tags=["security", "owasp", "compliance"],
 )
 @observe(name="security-agent")
-@traceable(name="security", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     coder_out = state.get("coder_output") or {}

@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
-from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, ModelTier
 from core.state.pipeline_state import PipelineState
@@ -38,7 +37,6 @@ _PROMPT = ChatPromptTemplate.from_messages([
     visible=True,
 )
 @observe(name="context-packer")
-@traceable(name="context_packer", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     """Summarize the last agent's output and prepare context for the next agent."""
     current = state["current_agent"]

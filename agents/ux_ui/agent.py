@@ -12,7 +12,6 @@ from pathlib import Path
 
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse import observe
-from langsmith import traceable
 
 from core.ai import get_llm, get_model_id, parse_json, strip_fences, ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
@@ -88,7 +87,6 @@ _FIGMA_SPEC_PROMPT = ChatPromptTemplate.from_messages([
 @register("ux_ui", description="Generates design brief JSON + HTML wireframe from requirements",
           tier=ModelTier.BALANCED, tags=["design", "wireframe"])
 @observe(name="ux-ui-agent")
-@traceable(name="ux_ui", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     prompt = state["human_prompt"]

@@ -16,7 +16,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from langfuse import observe
-from langsmith import traceable
 
 from core.ai import ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
@@ -162,7 +161,6 @@ def _detect_from_filesystem(ticket_id: str, coder_output: dict) -> str:
 @register("infra", description="Serves POC locally via HTTP server + ngrok tunnel; handles mobile project artifacts",
           tier=ModelTier.FAST, tags=["deployment", "infrastructure"])
 @observe(name="infra-agent")
-@traceable(name="infra", run_type="chain")
 def run(state: PipelineState) -> PipelineState:
     ticket_id = state["ticket_id"]
     coder_output = state.get("coder_output") or {}
