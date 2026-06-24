@@ -1,11 +1,10 @@
 """
-LangSmith tracing — LangGraph-native callback for node/edge topology visibility.
+LangSmith tracing — automatic for LangChain/LangGraph apps.
 
 Why alongside Langfuse:
   Langfuse sees the pipeline as a flat OTEL span tree — it has no concept of
   LangGraph nodes, edges, state transitions, or DAG structure.  LangSmith's
-  ``LangChainTracer`` is a native LangChain callback that hooks into LangGraph's
-  callback system and captures the full graph execution model:
+  native LangGraph integration captures:
 
   - Graph DAG structure and topology
   - Node execution order with timing
@@ -16,53 +15,74 @@ Why alongside Langfuse:
   - Conditional edge routing
   - Recursion/loop visualization
 
+How it works:
+  For LangChain/LangGraph apps, tracing is **automatic**.  Just set the
+  environment variables below — the LangSmith SDK auto-detects LangGraph
+  usage and installs its TracingCallbackHandler.  No manual callback needed.
+
+  This is the pattern prescribed by the ``langsmith-trace`` skill
+  (``<trace_langchain_oss>`` section).
+
 Coexistence:
   LangSmith uses LangChain's callback system.  Langfuse uses OpenTelemetry
   context propagation.  They operate at different layers and do not interfere.
 
 Setup:
   1. Install: ``pip install langsmith``
-  2. Set ``LANGCHAIN_API_KEY`` in ``.env`` (from smith.langchain.com)
-  3. Set ``LANGCHAIN_TRACING_V2=true`` and ``LANGCHAIN_PROJECT=hypertech``
-  4. The tracer is auto-created when ``get_tracer()`` is called — if the API
-     key is missing, it returns None and tracing is silently skipped.
+  2. Set env vars in ``.env``:
+     LANGSMITH_TRACING=true
+     LANGSMITH_API_KEY=lsv2_pt_...
+     LANGSMITH_PROJECT=hypertech
+  3. That's it — traces appear at smith.langchain.com
+
+Querying (langsmith CLI):
+  curl -sSL https://raw.githubusercontent.com/langchain-ai/langsmith-cli/main/scripts/install.sh | sh
+  langsmith trace list --limit 10 --project hypertech
 """
 
 import os
 import logging
-from typing import Optional
-
-from langchain_core.tracers.langchain import LangChainTracer
 
 logger = logging.getLogger(__name__)
 
+# LangSmith auto-detection env vars (preferred naming per langsmith-trace skill)
+_AUTO_VARS = {
+    "LANGSMITH_TRACING": os.getenv("LANGSMITH_TRACING"),
+    "LANGSMITH_API_KEY": os.getenv("LANGSMITH_API_KEY"),
+    "LANGSMITH_PROJECT": os.getenv("LANGSMITH_PROJECT", "hypertech"),
+}
 
-def get_tracer() -> Optional[LangChainTracer]:
+
+def is_configured() -> bool:
+    """Return True if LangSmith auto-tracing env vars are set."""
+    return bool(_AUTO_VARS["LANGSMITH_TRACING"] and _AUTO_VARS["LANGSMITH_API_KEY"])
+
+
+def ensure():
     """
-    Return a LangChainTracer for the current project, or None if LangSmith
-    is not configured (missing API key).
+    Ensure LangSmith environment is configured for auto-tracing.
 
-    The tracer is created once per call — LangChain's callback system handles
-    deduplication and nesting automatically.
-
-    The project name comes from ``LANGCHAIN_PROJECT`` (default: "hypertech").
-    Tags can be set via ``LANGCHAIN_TAGS`` (comma-separated).
+    Called once at startup — sets defaults and validates configuration.
+    Logs a warning if LANGSMITH_TRACING is set but LANGSMITH_API_KEY is missing.
     """
-    api_key = os.getenv("LANGCHAIN_API_KEY")
-    if not api_key:
-        logger.debug("LangSmith: LANGCHAIN_API_KEY not set — tracing disabled")
-        return None
+    # Set LANGSMITH_TRACING if the legacy LANGCHAIN_TRACING_V2 is set
+    if not os.getenv("LANGSMITH_TRACING") and os.getenv("LANGCHAIN_TRACING_V2"):
+        os.environ["LANGSMITH_TRACING"] = "true"
 
-    # LangChainTracer reads LANGCHAIN_API_KEY and LANGCHAIN_ENDPOINT from env
-    project = os.getenv("LANGCHAIN_PROJECT", "hypertech")
-    tags_raw = os.getenv("LANGCHAIN_TAGS", "")
-    tags = [t.strip() for t in tags_raw.split(",") if t.strip()] if tags_raw else None
+    # Copy LANGCHAIN_API_KEY → LANGSMITH_API_KEY if latter is unset
+    if not os.getenv("LANGSMITH_API_KEY") and os.getenv("LANGCHAIN_API_KEY"):
+        os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGCHAIN_API_KEY", "")
 
-    # Enable LangSmith tracing globally so LLM calls outside the graph
-    # (e.g. seed_models) also appear in the dashboard.
-    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    # Set default project if missing
+    os.environ.setdefault("LANGSMITH_PROJECT", "hypertech")
 
-    return LangChainTracer(
-        project_name=project,
-        tags=tags,
-    )
+    if not is_configured():
+        logger.info(
+            "LangSmith: auto-tracing disabled — set LANGSMITH_TRACING=true and "
+            "LANGSMITH_API_KEY in .env"
+        )
+    else:
+        logger.info(
+            "LangSmith: auto-tracing enabled — project=%s",
+            os.getenv("LANGSMITH_PROJECT"),
+        )

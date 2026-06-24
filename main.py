@@ -50,6 +50,10 @@ def run_pipeline(
     from core.ai.seed_models import seed as seed_models
     seed_models()
 
+    # Enable LangSmith auto-tracing (env-var-based, no manual callback needed).
+    from core.tracing.langsmith import ensure as ensure_langsmith
+    ensure_langsmith()
+
     # Start the viz server (daemon thread — idempotent, no-op if already running).
     from core.server.viz_server import start_viz_server
     start_viz_server()
