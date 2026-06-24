@@ -327,5 +327,326 @@
     "branch": "feature/HT-QUICK",
     "changelog_ref": "changelogs/HT-QUICK.md",
     "last_updated": "2026-06-22T18:00:40.649872+00:00"
+  },
+  "HT-84AB83": {
+    "title": "Quick POC: landing page with hero section and CTA button, Tailwind CSS",
+    "scenario": "poc",
+    "status": "code_generated",
+    "created": "2026-06-22T18:13:46.880169+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_web"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-84AB83",
+    "changelog_ref": "changelogs/HT-84AB83.md",
+    "last_updated": "2026-06-22T18:14:04.788434+00:00"
+  },
+  "HT-DEBUG": {
+    "title": "test debug",
+    "scenario": "poc",
+    "status": "code_committed",
+    "created": "2026-06-22T18:15:56.224123+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-DEBUG",
+    "changelog_ref": "changelogs/HT-DEBUG.md",
+    "last_updated": "2026-06-22T18:18:32.433948+00:00"
+  },
+  "HT-FIXED": {
+    "title": "Build a simple hello world page with Tailwind",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-22T18:20:39.644592+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-FIXED",
+    "changelog_ref": "changelogs/HT-FIXED.md",
+    "last_updated": "2026-06-22T18:27:55.107592+00:00",
+    "deploy_url": "http://localhost:56383/index.html"
+  },
+  "HT-FIXED2": {
+    "title": "Test",
+    "scenario": "poc",
+    "status": "planned_3_agents",
+    "created": "2026-06-22T18:35:29.887309+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-FIXED2",
+    "changelog_ref": "changelogs/HT-FIXED2.md",
+    "last_updated": "2026-06-22T18:35:29.888519+00:00"
+  },
+  "HT-B45A8F": {
+    "title": "Quick POC: simple landing page with hero, Tailwind CSS",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-22T18:36:03.287160+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_web",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-B45A8F",
+    "changelog_ref": "changelogs/HT-B45A8F.md",
+    "last_updated": "2026-06-22T18:43:33.656832+00:00",
+    "deploy_url": "http://localhost:60508/index.html"
+  },
+  "HT-8B9C9E": {
+    "title": "Nueva app de android que simula el pago de una transacci\u00f3n usando la api de stri",
+    "scenario": "poc",
+    "status": "code_generated",
+    "created": "2026-06-22T20:14:33.316385+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_mobile"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-8B9C9E",
+    "changelog_ref": "changelogs/HT-8B9C9E.md",
+    "last_updated": "2026-06-22T20:14:50.960326+00:00"
+  },
+  "HT-1B3F7A": {
+    "title": "build an android tpv app",
+    "scenario": "internal",
+    "status": "queued",
+    "created": "2026-06-22T20:21:36.376472+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-1B3F7A",
+    "changelog_ref": "changelogs/HT-1B3F7A.md",
+    "last_updated": "2026-06-22T20:21:36.439770+00:00"
+  },
+  "HT-175199": {
+    "title": "build an android tpv app",
+    "scenario": "internal",
+    "status": "queued",
+    "created": "2026-06-22T20:21:36.395601+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-175199",
+    "changelog_ref": "changelogs/HT-175199.md",
+    "last_updated": "2026-06-22T20:21:36.554623+00:00"
+  },
+  "HT-A9BB2F": {
+    "title": "Build an admin dashboard for the team",
+    "scenario": "internal",
+    "status": "failed",
+    "created": "2026-06-22T20:26:30.165448+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-A9BB2F",
+    "changelog_ref": "changelogs/HT-A9BB2F.md",
+    "last_updated": "2026-06-22T20:26:33.529739+00:00",
+    "error": "name '_format_kb_hits' is not defined"
+  },
+  "HT-0CACB6": {
+    "title": "Build admin dashboard",
+    "scenario": "internal",
+    "status": "failed",
+    "created": "2026-06-22T20:26:50.984222+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-0CACB6",
+    "changelog_ref": "changelogs/HT-0CACB6.md",
+    "last_updated": "2026-06-22T20:26:53.898238+00:00",
+    "error": "name '_format_kb_hits' is not defined"
+  },
+  "HT-A3DD96": {
+    "title": "internal app: Crea una app tipo tpv que simule una transaccion real con tarjeta ",
+    "scenario": "internal",
+    "status": "failed",
+    "created": "2026-06-22T20:32:17.473431+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-A3DD96",
+    "changelog_ref": "changelogs/HT-A3DD96.md",
+    "last_updated": "2026-06-22T20:32:20.658691+00:00",
+    "error": "name '_format_kb_hits' is not defined"
+  },
+  "HT-D7D03B": {
+    "title": "internal app: Crea una app tipo tpv que simule una transaccion real con tarjeta ",
+    "scenario": "internal",
+    "status": "failed",
+    "created": "2026-06-22T20:35:10.948539+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-D7D03B",
+    "changelog_ref": "changelogs/HT-D7D03B.md",
+    "last_updated": "2026-06-22T20:35:13.562424+00:00",
+    "error": "name '_format_kb_hits' is not defined"
+  },
+  "HT-B3DCA6": {
+    "title": "internal app: Crea una app tipo tpv que simule una transaccion real con tarjeta ",
+    "scenario": "internal",
+    "status": "design_ready",
+    "created": "2026-06-22T20:35:42.207995+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-B3DCA6",
+    "changelog_ref": "changelogs/HT-B3DCA6.md",
+    "last_updated": "2026-06-22T20:56:43.579848+00:00"
+  },
+  "HT-A58F88": {
+    "title": "Crea una app tipo tpv que simule una transaccion real con tarjeta presente",
+    "scenario": "production",
+    "status": "design_ready",
+    "created": "2026-06-22T20:57:29.538060+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-A58F88",
+    "changelog_ref": "changelogs/HT-A58F88.md",
+    "last_updated": "2026-06-22T21:00:09.944859+00:00"
+  },
+  "HT-E5D2C1": {
+    "title": "internal: Crea una app tipo tpv que simule una transaccion real con tarjeta pres",
+    "scenario": "internal",
+    "status": "design_ready",
+    "created": "2026-06-22T21:01:02.140666+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E5D2C1",
+    "changelog_ref": "changelogs/HT-E5D2C1.md",
+    "last_updated": "2026-06-22T21:12:54.883124+00:00"
+  },
+  "HT-E89731": {
+    "title": "where is the wireframe?",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-22T21:03:19.956034+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E89731",
+    "changelog_ref": "changelogs/HT-E89731.md",
+    "last_updated": "2026-06-22T21:06:53.879748+00:00",
+    "deploy_url": "http://localhost:64523/index.html"
+  },
+  "HT-569F03": {
+    "title": "Crea una app tipo tpv que simule una transaccion real con tarjeta presente",
+    "scenario": "production",
+    "status": "design_ready",
+    "created": "2026-06-22T21:16:23.528862+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-569F03",
+    "changelog_ref": "changelogs/HT-569F03.md",
+    "last_updated": "2026-06-22T21:19:12.796183+00:00"
+  },
+  "HT-14C3F5": {
+    "title": "Crea una app tipo tpv que simule una transaccion real con tarjeta presente",
+    "scenario": "production",
+    "status": "design_ready",
+    "created": "2026-06-22T21:19:51.643787+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-14C3F5",
+    "changelog_ref": "changelogs/HT-14C3F5.md",
+    "last_updated": "2026-06-22T21:26:04.511841+00:00"
+  },
+  "HT-9A44AA": {
+    "title": "Crea una app tipo tpv que simule una transaccion real con tarjeta presente",
+    "scenario": "production",
+    "status": "design_ready",
+    "created": "2026-06-22T21:22:27.049666+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-9A44AA",
+    "changelog_ref": "changelogs/HT-9A44AA.md",
+    "last_updated": "2026-06-22T21:26:18.604798+00:00"
+  },
+  "HT-828072": {
+    "title": "internal Crea una app tipo tpv que simule una transaccion real con tarjeta prese",
+    "scenario": "internal",
+    "status": "design_ready",
+    "created": "2026-06-22T21:27:23.060851+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-828072",
+    "changelog_ref": "changelogs/HT-828072.md",
+    "last_updated": "2026-06-22T21:29:37.674695+00:00"
+  },
+  "HT-FD5E91": {
+    "title": "Dise\u00f1a una pantalla de pago con tarjeta para app mobile",
+    "scenario": "production",
+    "status": "design_ready",
+    "created": "2026-06-22T21:38:29.980927+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance",
+      "ux_ui"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-FD5E91",
+    "changelog_ref": "changelogs/HT-FD5E91.md",
+    "last_updated": "2026-06-22T21:42:07.594935+00:00",
+    "resumed": true
+  },
+  "HT-25AF19": {
+    "title": "LangSmith dual-tracing for LangGraph node/edge topology + Colima Docker runtime migration",
+    "scenario": "feature",
+    "status": "in_progress",
+    "created": "2026-06-24T16:20:24.536670+00:00",
+    "agents_involved": [
+      "core/tracing",
+      "core/events",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-25AF19",
+    "changelog_ref": "changelogs/HT-25AF19.md",
+    "last_updated": "2026-06-24T16:20:24.538292+00:00"
   }
 }
