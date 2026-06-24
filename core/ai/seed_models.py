@@ -50,18 +50,21 @@ def _auth_header() -> str:
     return f"Basic {encoded}"
 
 
+_SEED_TIMEOUT = 5  # seconds — don't hang the pipeline if Langfuse is stuck
+
+
 def _existing_models() -> set[str]:
     """Return the set of model names already registered in Langfuse."""
     url = f"{LANGFUSE_HOST}/api/public/models"
     req = urllib.request.Request(url, headers={"Authorization": _auth_header()})
     try:
-        with urllib.request.urlopen(req) as resp:  # nosemgrep
+        with urllib.request.urlopen(req, timeout=_SEED_TIMEOUT) as resp:  # nosemgrep
             data = json.loads(resp.read())
         return {m["modelName"] for m in data.get("data", [])}
     except urllib.error.HTTPError as e:
         print(f"  ⚠️  Could not fetch existing models: {e.code} {e.reason}")
         return set()
-    except (urllib.error.URLError, ConnectionRefusedError, OSError) as e:
+    except (urllib.error.URLError, ConnectionRefusedError, OSError, TimeoutError) as e:
         print(f"  ⚠️  Langfuse not reachable ({e}) — skipping model seeding.")
         return set()
 
@@ -103,7 +106,7 @@ def seed():
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req) as resp:  # nosemgrep
+                with urllib.request.urlopen(req, timeout=_SEED_TIMEOUT) as resp:  # nosemgrep
                     if resp.status == 201 or resp.status == 200:
                         print(
                             f"  ✅ {name} registered — "
