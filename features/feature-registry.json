@@ -809,5 +809,19 @@
     "branch": "feature/HT-39C515",
     "changelog_ref": "changelogs/HT-39C515.md",
     "last_updated": "2026-06-25T18:44:42.215471+00:00"
+  },
+  "HT-CD1878": {
+    "title": "Approval stall fix: auto-resume + keep escalation checkpoint + Slack status",
+    "scenario": "fix",
+    "status": "in_progress",
+    "created": "2026-06-25T19:10:00+00:00",
+    "agents_involved": [
+      "validation_gate",
+      "context_packer"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-CD1878",
+    "changelog_ref": "changelogs/HT-CD1878.md",
+    "last_updated": "2026-06-25T18:48:40.260853+00:00"
   }
 }

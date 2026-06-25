@@ -19,6 +19,7 @@ from core.agent_registry import register
 from core.agent_registry.models import AgentOutput
 from core.prompt_registry import get_prompt
 from core.tracing.langfuse import record_generation
+from core.notifications import slack
 
 
 _SYSTEM = get_prompt("context_packer", "system")
@@ -49,6 +50,8 @@ def run(state: PipelineState) -> PipelineState:
         state["current_agent"] = "context_packer"
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
         return state
+
+    slack.status(ticket_id, f"📦 Packing context from *{current}* for the next agent…")
 
     # Call FAST-tier LLM to compress
     import json
@@ -85,6 +88,7 @@ def run(state: PipelineState) -> PipelineState:
     # the preceding agent already set — don't overwrite it.
     if plan and idx < len(plan):
         state["next_agent"] = plan[idx]
+        slack.status(ticket_id, f"➡️ Handing off to *{plan[idx]}* (step {idx}/{len(plan) - 1})")
     elif plan and idx >= len(plan):
         state["next_agent"] = None
 

@@ -316,9 +316,13 @@ def stream_pipeline(
                 # plan index pointing to the NEXT agent to run.  context_packer
                 # (which advances the index) will re-run on resume — it's FAST tier.
                 if node_name == "validation_gate":
-                    # Only save if validation passed (not escalating)
-                    if not final_state.get("human_escalation"):
-                        save_checkpoint(ticket_id, final_state)
+                    # Save on every gate pass — including escalation.  An
+                    # escalation checkpoint lets the pipeline auto-resume once a
+                    # human approves: the gate re-evaluates the same agent and
+                    # picks up the stored approval.  current_agent still points
+                    # at the escalated agent and agent_plan_index is unchanged,
+                    # so resume continues from exactly the right place.
+                    save_checkpoint(ticket_id, final_state)
 
                 prev_node = node_name
 
@@ -344,10 +348,18 @@ def stream_pipeline(
     # -- final dispatcher state snapshot -----------------------------------
     update_pipeline_status(final_state)
 
-    # -- Clean up checkpoint on successful completion -----------------------
-    try:
-        delete_checkpoint(ticket_id)
-    except Exception:
-        logger.debug("Failed to delete checkpoint for %s", ticket_id, exc_info=True)
+    # -- Clean up checkpoint — but KEEP it when escalated -------------------
+    # An escalated run ends normally at human_escalation → END.  Deleting the
+    # checkpoint here would strand the run with nothing to resume.  Keep it so
+    # an approval (Slack button or /resume) can pick the pipeline back up.
+    if final_state.get("human_escalation"):
+        logger.info(
+            "Pipeline %s escalated — keeping checkpoint for resume", ticket_id
+        )
+    else:
+        try:
+            delete_checkpoint(ticket_id)
+        except Exception:
+            logger.debug("Failed to delete checkpoint for %s", ticket_id, exc_info=True)
 
     return final_state

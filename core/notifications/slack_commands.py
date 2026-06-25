@@ -621,7 +621,46 @@ def slack_interactive():
                 f"{emoji} *{stage}* — {value.upper()} by <@{user}>"
             )
 
+            # Auto-resume: an approval or change-request should continue the
+            # pipeline immediately.  Without this the run sits escalated and the
+            # Slack channel goes silent until a manual /resume.  A rejection is
+            # terminal, so we leave it for the gate to fail cleanly.
+            if value in ("approved", "changes_requested"):
+                _resume_pipeline_async(ticket_id, reason=f"{stage} {value}")
+
     return "", 200
+
+
+def _resume_pipeline_async(ticket_id: str, reason: str = "") -> None:
+    """Resume a checkpointed pipeline in a background thread (best-effort).
+
+    Only resumes when a checkpoint actually exists — an escalation checkpoint is
+    written by ``stream_pipeline`` precisely so this can pick the run back up.
+    """
+    def _run():
+        try:
+            from core.checkpoint.manager import exists as checkpoint_exists
+            if not checkpoint_exists(ticket_id):
+                slack.status(
+                    ticket_id,
+                    "⚠️ Approval recorded but no checkpoint found to resume "
+                    "— run may have completed or not been checkpointed.",
+                )
+                return
+            slack.status(ticket_id, f"♻️ Resuming pipeline ({reason})…")
+            from main import run_pipeline
+            result = run_pipeline(ticket_id, "", resume=True)
+            slack.status(
+                ticket_id,
+                f"✅ Pipeline resumed — status: {result.get('status', '?')}",
+            )
+        except Exception as exc:  # noqa: BLE001 — surface to Slack, never crash server
+            slack.alert(
+                f"❌ *Auto-resume failed for {ticket_id}*: {exc}",
+                channel="#pipeline-alerts",
+            )
+
+    Thread(target=_run, daemon=True).start()
 
 
 if __name__ == "__main__":
