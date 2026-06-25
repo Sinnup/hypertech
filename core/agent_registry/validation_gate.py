@@ -63,6 +63,11 @@ def validation_gate_node(state: PipelineState) -> PipelineState:
         if not approval:
             # Check for /answer command responses
             approval = _get_stored_approval(state["ticket_id"], "agent_question")
+        if not approval:
+            # Test affordance: HITL_AUTOPILOT injects a deterministic decision.
+            # No-op in production (unset / idle).
+            from core.agent_registry.hitl_autopilot import decision as _autopilot
+            approval = _autopilot(state["ticket_id"], f"escalation_{current}")
 
         if approval and approval.get("status"):
             status = approval["status"]

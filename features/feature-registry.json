@@ -798,5 +798,16 @@
     "branch": "feature/HT-4AE86D",
     "changelog_ref": "changelogs/HT-4AE86D.md",
     "last_updated": "2026-06-25T18:40:15.318963+00:00"
+  },
+  "HT-39C515": {
+    "title": "HitL-bypass test harness (HITL_AUTOPILOT + tests/e2e)",
+    "scenario": "feature",
+    "status": "in_progress",
+    "created": "2026-06-25T18:50:00+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-39C515",
+    "changelog_ref": "changelogs/HT-39C515.md",
+    "last_updated": "2026-06-25T18:44:42.215471+00:00"
   }
 }
