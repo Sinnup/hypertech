@@ -229,14 +229,24 @@ def _is_presales(prompt: str) -> bool:
     return any(re.search(r"\b" + re.escape(kw), p) for kw in _GTM_KEYWORDS)
 
 
+def _kw_match(prompt_lower: str, keywords: list[str]) -> bool:
+    """Whole-word keyword match.
+
+    Uses word boundaries so short tokens don't match inside unrelated words —
+    e.g. "pos" must not match "POST", "ios" must not match "scenarios", and
+    "spa" must not match "space".  This keeps coder routing predictable.
+    """
+    return any(re.search(r"\b" + re.escape(kw) + r"\b", prompt_lower) for kw in keywords)
+
+
 def _pick_coder(prompt: str) -> str:
     """Select the right coder agent based on prompt keywords."""
     p = prompt.lower()
-    if any(kw in p for kw in _MOBILE_KEYWORDS):
+    if _kw_match(p, _MOBILE_KEYWORDS):
         return "coder_mobile"
-    if any(kw in p for kw in _BACKEND_KEYWORDS) and not any(kw in p for kw in _WEB_KEYWORDS):
+    if _kw_match(p, _BACKEND_KEYWORDS) and not _kw_match(p, _WEB_KEYWORDS):
         return "coder_backend"
-    if any(kw in p for kw in _WEB_KEYWORDS):
+    if _kw_match(p, _WEB_KEYWORDS):
         return "coder_web"
     return "coder"
 

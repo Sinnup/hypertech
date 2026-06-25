@@ -913,5 +913,48 @@
     "branch": "feature/HT-C871A9",
     "changelog_ref": "changelogs/HT-C871A9.md",
     "last_updated": "2026-06-25T19:12:53.604996+00:00"
+  },
+  "HT-E2EC6B1": {
+    "title": "Build a tiny FastAPI backend with one POST /pay endpoint that returns {'status':",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:13:33.100012+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder_mobile"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2EC6B1",
+    "changelog_ref": "changelogs/HT-E2EC6B1.md",
+    "last_updated": "2026-06-25T19:13:55.883693+00:00",
+    "project_dir": "/Users/sinue/Documents/hypertech/poc/HT-E2EC6B1/android"
+  },
+  "HT-E2E5E1A": {
+    "title": "Build a tiny FastAPI backend with one POST /pay endpoint that returns {'status':",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:15:39.897473+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder_backend"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2E5E1A",
+    "changelog_ref": "changelogs/HT-E2E5E1A.md",
+    "last_updated": "2026-06-25T19:15:49.002329+00:00",
+    "project_dir": "/Users/sinue/Documents/hypertech/poc/HT-E2E5E1A/backend"
+  },
+  "HT-728BAE": {
+    "title": "Predictable coder routing \u2014 whole-word keyword match",
+    "scenario": "fix",
+    "status": "in_progress",
+    "created": "2026-06-25T20:45:00+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-728BAE",
+    "changelog_ref": "changelogs/HT-728BAE.md",
+    "last_updated": "2026-06-25T19:17:18.384511+00:00"
   }
 }
