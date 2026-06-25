@@ -34,3 +34,6 @@ poc/
 .hypertech/state.lock
 .hypertech/state.tmp
 STATE.md
+
+# LangGraph Studio (`langgraph dev`) local cache
+.langgraph_api/

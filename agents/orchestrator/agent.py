@@ -8,7 +8,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from langfuse import observe
+from core.tracing.langfuse import observe
 from core.ai import ModelTier, get_llm, get_model_id, parse_json
 from core.agent_registry import register
 from core.agent_registry.models import AgentOutput

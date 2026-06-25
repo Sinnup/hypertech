@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
-from langfuse import observe
+from core.tracing.langfuse import observe
 
 from core.ai import get_llm, get_model_id, strip_fences, ModelTier
 from core.agent_registry import register

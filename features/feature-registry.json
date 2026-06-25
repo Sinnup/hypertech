@@ -837,5 +837,18 @@
     "branch": "feature/HT-09FBB3",
     "changelog_ref": "changelogs/HT-09FBB3.md",
     "last_updated": "2026-06-25T18:54:42.089439+00:00"
+  },
+  "HT-20911B": {
+    "title": "Standardize on LangGraph/LangSmith + LangGraph Studio; remove Langfuse",
+    "scenario": "feature",
+    "status": "in_progress",
+    "created": "2026-06-25T19:55:00+00:00",
+    "agents_involved": [
+      "(all - tracing)"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-20911B",
+    "changelog_ref": "changelogs/HT-20911B.md",
+    "last_updated": "2026-06-25T18:59:49.210338+00:00"
   }
 }

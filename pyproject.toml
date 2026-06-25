@@ -31,6 +31,8 @@ dependencies = [
     "filelock",
     "pydantic>=2.0,<3.0",
     "pyyaml>=6.0",
+    "gdown>=6.1.0",
+    "pdfminer-six>=20260107",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +61,7 @@ artifacts = ["*.py", "*.md", "*.txt", "*.json", "*.yml", "*.yaml", "*.lock"]
 
 [dependency-groups]
 dev = [
+    "langgraph-cli[inmem]>=0.4.30",
     "pytest>=8",
     "pytest-asyncio",
     "ruff>=0.8",

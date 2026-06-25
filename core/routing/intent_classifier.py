@@ -4,7 +4,7 @@ Uses the FAST model tier (cheapest) since this is a simple classification task.
 """
 
 from langchain_core.prompts import ChatPromptTemplate
-from langfuse import observe
+from core.tracing.langfuse import observe
 from core.ai import get_llm, get_model_id, parse_json, ModelTier
 from core.tracing.langfuse import get_client, record_generation
 

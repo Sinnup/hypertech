@@ -26,7 +26,7 @@ import threading
 import time
 from typing import Callable, Optional
 
-from langfuse import observe
+from core.tracing.langfuse import observe
 
 from core.circuit_breaker.models import CircuitBreakerResult
 from core.notifications import slack

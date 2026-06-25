@@ -11,7 +11,7 @@ Design decision (from Q5): visible node in the dashboard — "all steps must be 
 from datetime import datetime, timezone
 
 from langchain_core.prompts import ChatPromptTemplate
-from langfuse import observe
+from core.tracing.langfuse import observe
 
 from core.ai import get_llm, get_model_id, ModelTier
 from core.state.pipeline_state import PipelineState

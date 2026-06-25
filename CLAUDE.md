@@ -205,7 +205,7 @@ docker compose up -d    # ChromaDB + Langfuse (Postgres + ClickHouse + MinIO)
 - **Q&A mode**: When the user asks a question, ONLY answer — no file creation, no implementation, no side effects. Wait for "proceed", "go ahead", "do it", or similar before acting.
 - **Versioning gate**: Before making ANY new code, read `.claude/agents/versioning.md` — every feature needs a ticket, branch, changelog, and registry entry.
 - **State**: TypedDict `PipelineState` in `core/state/pipeline_state.py` — all agents read/write it
-- **Tracing**: v4.8.1 OTEL-based — `@observe` on agents, `pipeline_trace()` root span in `main.py`
+- **Tracing**: standard LangChain/LangGraph/LangSmith. LangSmith auto-traces the compiled graph (env: `LANGSMITH_TRACING`); live node/edge graph via `uv run langgraph dev` (LangGraph Studio, see `langgraph.json`). Langfuse is backlogged — `core/tracing/langfuse.py` is a no-op shim (`@observe` passthrough).
 - **Parsing**: `core/ai/parsing.py` handles ``` fences and `<think>` blocks
 - **Registry**: `features/feature-registry.json` tracks every ticket's lifecycle
 - **Changelogs**: `changelogs/HT-XXXXXX.md` per ticket

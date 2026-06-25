@@ -81,6 +81,15 @@ def build() -> StateGraph:
     return graph.compile()
 
 
+def make_graph():
+    """Factory for LangGraph Studio / ``langgraph dev`` (see ``langgraph.json``).
+
+    Returns the compiled StateGraph so the standard LangGraph tooling can render
+    the live node/edge graph and stream executions — no custom wrappers needed.
+    """
+    return build()
+
+
 # ---------------------------------------------------------------------------
 # Routing
 # ---------------------------------------------------------------------------

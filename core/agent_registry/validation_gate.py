@@ -8,7 +8,7 @@ During migration, auto-wraps legacy raw-dict agent outputs in AgentOutput.
 from datetime import datetime, timezone
 from typing import Literal
 
-from langfuse import observe
+from core.tracing.langfuse import observe
 
 from core.state.pipeline_state import PipelineState, agent_message
 from core.agent_registry.models import AgentOutput, CONFIDENCE_THRESHOLD_OK

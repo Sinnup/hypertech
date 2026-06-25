@@ -72,9 +72,12 @@ def _existing_models() -> set[str]:
 def seed():
     """Register any missing DeepSeek models.  Idempotent.
 
-    Connection failures are swallowed — seed is best-effort and the
-    pipeline should not fail because Langfuse is temporarily unreachable.
+    DISABLED (HT-20911B): Langfuse cost tracking is backlogged, so this is a
+    no-op to keep the pipeline off the Langfuse ingest path.  The original
+    implementation remains below for the backlog restore.
     """
+    return  # Langfuse backlogged — see core/tracing/langfuse.py
+
     if not PUBLIC_KEY or not SECRET_KEY:
         print("  ⚠️  Langfuse keys not configured — skipping model seeding.")
         return

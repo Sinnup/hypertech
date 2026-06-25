@@ -15,7 +15,7 @@ import functools
 from pathlib import Path
 from datetime import datetime, timezone
 
-from langfuse import observe
+from core.tracing.langfuse import observe
 
 from core.ai import ModelTier
 from core.state.pipeline_state import PipelineState, agent_message
