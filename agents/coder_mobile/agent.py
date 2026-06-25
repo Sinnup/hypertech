@@ -10,6 +10,7 @@ card insertion → processing animation → "Payment Approved" result.
 """
 
 import json
+import re
 import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,6 +115,9 @@ def run(state: PipelineState) -> PipelineState:
         slack.status(ticket_id, "⚠️ LLM file parse failed — using TPV demo template")
         file_map = _tpv_demo_template(prompt)
 
+    # Normalize so `./gradlew assembleDebug` succeeds regardless of LLM variance.
+    file_map = _ensure_buildable(file_map)
+
     # Write files to poc/{ticket_id}/android/
     project_dir = Path(f"poc/{ticket_id}/android")
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -205,6 +209,38 @@ def _extract_extra_requirements(state: PipelineState) -> str:
 
 def _agents_so_far(state: PipelineState) -> list[str]:
     return list(state.get("agent_outputs", {}).keys())
+
+
+def _ensure_buildable(file_map: dict) -> dict:
+    """Normalize an Android file map so ``./gradlew assembleDebug`` succeeds.
+
+    LLM-generated projects vary; guarantee the two things that otherwise reliably
+    break a clean debug build (both observed in real runs):
+
+    1. ``gradle.properties`` with ``android.useAndroidX=true`` — every project
+       pulls AndroidX/Compose deps, which fail ``checkDebugAarMetadata`` without it.
+    2. No dangling ``@mipmap/ic_launcher`` reference — we don't generate launcher
+       icon assets, and the missing resource fails ``processDebugResources``.
+    """
+    fm = dict(file_map)
+
+    # 1) gradle.properties — required for AndroidX dependencies
+    gp = fm.get("gradle.properties", "")
+    if "android.useAndroidX" not in gp:
+        fm["gradle.properties"] = (
+            "android.useAndroidX=true\n"
+            "android.nonTransitiveRClass=true\n"
+            "kotlin.code.style=official\n"
+            "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8\n"
+        ) + (gp if gp.strip() else "")
+
+    # 2) Strip the launcher-icon reference unless an icon asset is present
+    has_icon = any("mipmap" in p and "ic_launcher" in p for p in fm)
+    if not has_icon:
+        for p, content in list(fm.items()):
+            if p.endswith("AndroidManifest.xml") and "@mipmap/ic_launcher" in content:
+                fm[p] = re.sub(r'\s*android:icon="@mipmap/ic_launcher"', "", content)
+    return fm
 
 
 def _parse_file_map(content: str) -> Optional[dict]:

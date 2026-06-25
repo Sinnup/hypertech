@@ -956,5 +956,48 @@
     "branch": "feature/HT-728BAE",
     "changelog_ref": "changelogs/HT-728BAE.md",
     "last_updated": "2026-06-25T19:17:18.384511+00:00"
+  },
+  "HT-E2E3A16": {
+    "title": "Build a tiny Android TPV demo app in Kotlin/Compose. A single button press simul",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:17:51.801945+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder_mobile"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2E3A16",
+    "changelog_ref": "changelogs/HT-E2E3A16.md",
+    "last_updated": "2026-06-25T19:18:11.364391+00:00",
+    "project_dir": "/Users/sinue/Documents/hypertech/poc/HT-E2E3A16/android"
+  },
+  "HT-E2EB2D9": {
+    "title": "Build a tiny Android TPV demo app in Kotlin/Compose. A single button press simul",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:26:18.002568+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder_mobile"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2EB2D9",
+    "changelog_ref": "changelogs/HT-E2EB2D9.md",
+    "last_updated": "2026-06-25T19:26:36.378274+00:00",
+    "project_dir": "/Users/sinue/Documents/hypertech/poc/HT-E2EB2D9/android"
+  },
+  "HT-CB5971": {
+    "title": "coder_mobile: generate buildable Android project (gradle.properties + strip dangling icon)",
+    "scenario": "fix",
+    "status": "in_progress",
+    "created": "2026-06-25T21:10:00+00:00",
+    "agents_involved": [
+      "coder_mobile"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-CB5971",
+    "changelog_ref": "changelogs/HT-CB5971.md",
+    "last_updated": "2026-06-25T19:29:11.245831+00:00"
   }
 }
