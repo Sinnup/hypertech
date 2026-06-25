@@ -70,9 +70,16 @@ def build() -> StateGraph:
         {},  # dynamic destinations — _plan_router returns agent name or END
     )
 
-    # -- Every visible agent (except orchestrator) → validation_gate ----------
+    # -- Every visible agent → validation_gate --------------------------------
+    # Exclude infrastructure nodes: orchestrator has its own edge, and
+    # context_packer routes via _plan_router only.  context_packer is registered
+    # via @register (so it's in `agents`); without this guard it would get a
+    # second, static edge to validation_gate on top of its conditional
+    # _plan_router edge — a fan-out that loops the gate forever (the agent never
+    # advances, GraphRecursionError).
+    _INFRA_NODES = {"orchestrator", "context_packer", "validation_gate", "human_escalation"}
     for name in agents:
-        if name != "orchestrator" and agents[name].visible:
+        if name not in _INFRA_NODES and agents[name].visible:
             graph.add_edge(name, "validation_gate")
 
     # -- Human escalation is terminal ----------------------------------------

@@ -6,7 +6,6 @@ All fields use ``Annotated`` with reducers so LangGraph 1.2.5+ can handle
 the initial-state write + first-node return without ``InvalidUpdateError``.
 """
 
-import operator
 from typing import TypedDict, Optional, List, Literal, Annotated
 from datetime import datetime, timezone
 
@@ -64,7 +63,13 @@ class PipelineState(TypedDict):
     status: Annotated[str, _keep_latest]
 
     # Agent outputs — dict fields (merge)
-    agent_messages: Annotated[List[AgentMessage], operator.add]
+    # NOTE: list channels use _keep_latest, NOT operator.add.  Every agent
+    # read-modify-writes the *full* list in the shared state dict and returns the
+    # whole state, so operator.add concatenated the full list onto itself on every
+    # node — doubling each step (8 nodes → ~510 items, GB-scale state, rejected
+    # LangSmith traces).  Last-write-wins with the full list is correct here
+    # because agents run sequentially (no parallel writes to these channels).
+    agent_messages: Annotated[List[AgentMessage], _keep_latest]
     coder_output: Annotated[Optional[dict], _keep_latest]
     design_brief: Annotated[Optional[dict], _keep_latest]
     design_synthesis: Annotated[Optional[dict], _keep_latest]
@@ -75,11 +80,11 @@ class PipelineState(TypedDict):
 
     # Human in the loop
     human_approval_required: Annotated[bool, _keep_latest]
-    human_approvals: Annotated[List[HumanApproval], operator.add]
+    human_approvals: Annotated[List[HumanApproval], _keep_latest]
 
     # Agent → human questions (waiting for text input)
-    pending_questions: Annotated[list, operator.add]
-    pending_answers: Annotated[list, operator.add]
+    pending_questions: Annotated[list, _keep_latest]
+    pending_answers: Annotated[list, _keep_latest]
 
     # Meta
     created_at: Annotated[str, _keep_latest]

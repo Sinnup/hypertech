@@ -850,5 +850,68 @@
     "branch": "feature/HT-20911B",
     "changelog_ref": "changelogs/HT-20911B.md",
     "last_updated": "2026-06-25T18:59:49.210338+00:00"
+  },
+  "HT-E2E69B4": {
+    "title": "Build a tiny single-page web prototype: a button that simulates a payment and sh",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:01:54.021539+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_web",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2E69B4",
+    "changelog_ref": "changelogs/HT-E2E69B4.md",
+    "last_updated": "2026-06-25T19:03:28.911717+00:00",
+    "deploy_url": "http://localhost:50943/index.html"
+  },
+  "HT-E2E9F50": {
+    "title": "Build a tiny single-page web prototype: a button that simulates a payment and sh",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:08:11.970912+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "context_packer",
+      "coder_web",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2E9F50",
+    "changelog_ref": "changelogs/HT-E2E9F50.md",
+    "last_updated": "2026-06-25T19:08:53.930274+00:00",
+    "deploy_url": "http://localhost:51315/index.html"
+  },
+  "HT-E2EABD6": {
+    "title": "Build a tiny single-page web prototype: a button that simulates a payment and sh",
+    "scenario": "poc",
+    "status": "deployed",
+    "created": "2026-06-25T19:11:50.643345+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "coder_web",
+      "infra"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E2EABD6",
+    "changelog_ref": "changelogs/HT-E2EABD6.md",
+    "last_updated": "2026-06-25T19:12:09.391625+00:00",
+    "deploy_url": "http://localhost:51391/index.html"
+  },
+  "HT-C871A9": {
+    "title": "Pipeline execution correctness: state-growth reducers + context_packer routing",
+    "scenario": "fix",
+    "status": "in_progress",
+    "created": "2026-06-25T20:25:00+00:00",
+    "agents_involved": [
+      "(graph/state)"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-C871A9",
+    "changelog_ref": "changelogs/HT-C871A9.md",
+    "last_updated": "2026-06-25T19:12:53.604996+00:00"
   }
 }
