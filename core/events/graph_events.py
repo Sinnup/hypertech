@@ -256,6 +256,7 @@ def stream_pipeline(
     from .event_bus import event_bus
     from core.checkpoint.manager import save as save_checkpoint
     from core.checkpoint.manager import delete as delete_checkpoint
+    from core.state.state_manager import update_pipeline_status
 
     # -- detect resume -----------------------------------------------------
     is_resume = state.get("resumed_from_checkpoint", False)
@@ -297,6 +298,9 @@ def stream_pipeline(
                 # Merge output into final_state
                 final_state.update(node_output)
 
+                # Dispatcher-readable state file (best-effort, never raises)
+                update_pipeline_status(final_state)
+
                 # Orchestrator is special — scenario_classified
                 if node_name == "orchestrator":
                     scenario = final_state.get("scenario", "poc")
@@ -336,6 +340,9 @@ def stream_pipeline(
             "status": final_state.get("status", "unknown"),
             "timestamp": _now(),
         })
+
+    # -- final dispatcher state snapshot -----------------------------------
+    update_pipeline_status(final_state)
 
     # -- Clean up checkpoint on successful completion -----------------------
     try:

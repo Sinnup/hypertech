@@ -662,5 +662,141 @@
     "branch": "feature/HT-383C92",
     "changelog_ref": "changelogs/HT-383C92.md",
     "last_updated": "2026-06-24T18:40:48.852423+00:00"
+  },
+  "HT-3AEE68": {
+    "title": "QR Payment Android App for Mexican merchants. 5 Screens: Amount Entry with keypa",
+    "scenario": "production",
+    "status": "compliance_checked",
+    "created": "2026-06-24T20:00:22.566749+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-3AEE68",
+    "changelog_ref": "changelogs/HT-3AEE68.md",
+    "last_updated": "2026-06-24T20:00:34.103741+00:00"
+  },
+  "HT-A5B562": {
+    "title": "QR Payment App POC for Mexican merchants. 3 screens: Amount Entry, QR Display, P",
+    "scenario": "poc",
+    "status": "planned_3_agents",
+    "created": "2026-06-24T20:21:38.402515+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-A5B562",
+    "changelog_ref": "changelogs/HT-A5B562.md",
+    "last_updated": "2026-06-24T20:21:38.404665+00:00"
+  },
+  "HT-CE9DE1": {
+    "title": "Build a QR payment Android app for Mexican merchants with full CNBV LACP EMVCo c",
+    "scenario": "production",
+    "status": "compliance_checked",
+    "created": "2026-06-24T21:22:03.061752+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-CE9DE1",
+    "changelog_ref": "changelogs/HT-CE9DE1.md",
+    "last_updated": "2026-06-24T21:22:17.442349+00:00"
+  },
+  "HT-832130": {
+    "title": "Build a QR payment Android app for Mexican merchants with CNBV LACP EMVCo compli",
+    "scenario": "production",
+    "status": "compliance_checked",
+    "created": "2026-06-24T21:38:18.651180+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-832130",
+    "changelog_ref": "changelogs/HT-832130.md",
+    "last_updated": "2026-06-24T21:45:48.890887+00:00"
+  },
+  "HT-1D5D19": {
+    "title": "--internal Build a QR payment Android app for Mexican merchants with CNBV LACP E",
+    "scenario": "internal",
+    "status": "compliance_checked",
+    "created": "2026-06-24T22:11:48.686319+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-1D5D19",
+    "changelog_ref": "changelogs/HT-1D5D19.md",
+    "last_updated": "2026-06-24T22:14:01.847861+00:00"
+  },
+  "HT-339DE1": {
+    "title": "Build a QR payment Android app for Mexican merchants with CNBV LACP EMVCo compli",
+    "scenario": "internal",
+    "status": "compliance_checked",
+    "created": "2026-06-24T22:16:24.176788+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-339DE1",
+    "changelog_ref": "changelogs/HT-339DE1.md",
+    "last_updated": "2026-06-24T22:16:33.338732+00:00"
+  },
+  "HT-DB4E98": {
+    "title": "Build a QR payment Android app for Mexican merchants with CNBV LACP EMVCo compli",
+    "scenario": "internal",
+    "status": "compliance_checked",
+    "created": "2026-06-24T22:27:25.900691+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-DB4E98",
+    "changelog_ref": "changelogs/HT-DB4E98.md",
+    "last_updated": "2026-06-24T22:27:38.954147+00:00"
+  },
+  "HT-BEAFE1": {
+    "title": "Build a QR payment Android app for Mexican merchants with CNBV LACP EMVCo compli",
+    "scenario": "internal",
+    "status": "compliance_checked",
+    "created": "2026-06-24T23:13:42.153174+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-BEAFE1",
+    "changelog_ref": "changelogs/HT-BEAFE1.md",
+    "last_updated": "2026-06-24T23:13:58.107481+00:00"
+  },
+  "HT-D2BC89": {
+    "title": "innternal: make a simple android app with a login",
+    "scenario": "internal",
+    "status": "compliance_checked",
+    "created": "2026-06-24T23:25:54.594062+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-D2BC89",
+    "changelog_ref": "changelogs/HT-D2BC89.md",
+    "last_updated": "2026-06-24T23:28:03.245240+00:00"
+  },
+  "HT-4AE86D": {
+    "title": "Dispatcher-readable state file (state.json + STATE.md)",
+    "scenario": "feature",
+    "status": "in_progress",
+    "created": "2026-06-25T18:30:00+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-4AE86D",
+    "changelog_ref": "changelogs/HT-4AE86D.md",
+    "last_updated": "2026-06-25T18:40:15.318963+00:00"
   }
 }

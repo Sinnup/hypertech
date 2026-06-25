@@ -28,3 +28,9 @@ poc/
 *.html
 *.docx
 .hypertech/setup-branch-workflow.sh
+
+# Dispatcher state-manager runtime artifacts (regenerated each run, read locally)
+.hypertech/state.json
+.hypertech/state.lock
+.hypertech/state.tmp
+STATE.md
