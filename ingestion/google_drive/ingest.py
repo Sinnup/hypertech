@@ -36,6 +36,17 @@ from core.secrets.loader import get, get_optional
 _CHUNK_SIZE = int(get_optional("INGEST_CHUNK_SIZE", "800"))
 _CHUNK_OVERLAP = int(get_optional("INGEST_CHUNK_OVERLAP", "100"))
 
+# Bundled regulation snippets for offline seeding (no Drive access needed).
+_SAMPLE_DOCS_DIR = Path(__file__).resolve().parents[1] / "sample_docs"
+
+
+def _is_placeholder_sa(path: str) -> bool:
+    """True when GOOGLE_SERVICE_ACCOUNT_JSON is the unset placeholder value."""
+    if not path:
+        return True
+    p = path.strip().lower()
+    return p in ("path/to/service-account.json", "service-account.json") or "path/to" in p
+
 
 def _doc_id(file_id: str, chunk_index: int) -> str:
     return f"{file_id}__chunk_{chunk_index}"
@@ -141,10 +152,23 @@ def run(folder_id: str = None) -> dict:
     """
     folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
     service_account_path = get_optional("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-    use_service_account = service_account_path and Path(service_account_path).exists()
+    sa_is_placeholder = _is_placeholder_sa(service_account_path)
+    use_service_account = (
+        service_account_path
+        and not sa_is_placeholder
+        and Path(service_account_path).exists()
+    )
 
     print(f"[ingest] Drive folder: {folder_id}")
     print(f"[ingest] Auth mode: {'service account' if use_service_account else 'public (no credentials)'}")
+    if not use_service_account and service_account_path and not Path(service_account_path).exists():
+        if sa_is_placeholder:
+            print("[ingest] ⚠️  GOOGLE_SERVICE_ACCOUNT_JSON is a placeholder "
+                  "('path/to/service-account.json') — falling back to public gdown. "
+                  "A private/org Drive folder will NOT download this way.")
+        else:
+            print(f"[ingest] ⚠️  Service-account file not found at "
+                  f"'{service_account_path}' — falling back to public gdown.")
 
     # ── Download ──────────────────────────────────────────────────────
     tmp_dir = tempfile.mkdtemp(prefix="hypertech_ingest_")
@@ -157,14 +181,22 @@ def run(folder_id: str = None) -> dict:
             print(f"[ingest] Downloading from public folder via gdown...")
             file_paths = _download_public_folder(folder_id, tmp_dir)
             if not file_paths:
+                hint = (
+                    "Configure GOOGLE_SERVICE_ACCOUNT_JSON with a real key file, "
+                    "or share the folder as 'anyone with the link'."
+                ) if sa_is_placeholder else (
+                    "Verify the folder is shared publicly or the service account "
+                    "has access."
+                )
                 return {
                     "ingested": 0,
                     "skipped": 0,
                     "errors": [{
                         "error": (
-                            f"No files downloaded from folder {folder_id}. "
-                            f"Is the folder public? Check: "
-                            f"https://drive.google.com/drive/folders/{folder_id}"
+                            f"No files downloaded from folder {folder_id}. {hint} "
+                            f"Folder: https://drive.google.com/drive/folders/{folder_id}. "
+                            f"To seed the KB without Drive, run: "
+                            f"python -m ingestion.google_drive.ingest --seed-local"
                         )
                     }],
                 }
@@ -181,8 +213,15 @@ def run(folder_id: str = None) -> dict:
         }
 
     print(f"[ingest] Loaded {len(docs)} document(s).")
+    return _chunk_and_upsert(docs)
 
-    # ── Chunk ──────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Chunk + upsert (shared by Drive ingest and local seeding)
+# ---------------------------------------------------------------------------
+
+def _chunk_and_upsert(docs: list) -> dict:
+    """Split LangChain documents into chunks and upsert them into ChromaDB."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=_CHUNK_SIZE,
         chunk_overlap=_CHUNK_OVERLAP,
@@ -190,11 +229,9 @@ def run(folder_id: str = None) -> dict:
     chunks = splitter.split_documents(docs)
     print(f"[ingest] Split into {len(chunks)} chunks.")
 
-    # ── Embed + Upsert ─────────────────────────────────────────────────
     ingested = 0
     skipped = 0
     errors = []
-
     batch_docs, batch_ids, batch_meta = [], [], []
 
     for i, chunk in enumerate(chunks):
@@ -232,6 +269,39 @@ def run(folder_id: str = None) -> dict:
     return summary
 
 
+# ---------------------------------------------------------------------------
+# Local seeding — populate the KB from bundled sample docs (no Drive needed)
+# ---------------------------------------------------------------------------
+
+def seed_local(docs_dir: Path | None = None) -> dict:
+    """Ingest the bundled sample regulation docs into ChromaDB.
+
+    Lets demos and tests populate the knowledge base without any Google Drive
+    access (useful while the service-account credential is a placeholder).
+    """
+    docs_dir = docs_dir or _SAMPLE_DOCS_DIR
+    files = sorted(p for p in docs_dir.glob("*.md") if p.stat().st_size > 0)
+    if not files:
+        return {"ingested": 0, "skipped": 0,
+                "errors": [{"error": f"No sample docs found in {docs_dir}"}]}
+
+    print(f"[ingest] Seeding KB from {len(files)} local sample doc(s) in {docs_dir}")
+    docs = _load_documents(files)
+    if not docs:
+        return {"ingested": 0, "skipped": 0,
+                "errors": [{"error": "Sample docs failed to load."}]}
+    return _chunk_and_upsert(docs)
+
+
 if __name__ == "__main__":
-    result = run()
+    import sys
+
+    if "--seed-local" in sys.argv:
+        result = seed_local()
+    else:
+        result = run()
     print(json.dumps(result, indent=2))
+    try:
+        print(json.dumps({"kb_health": chroma.health()}, indent=2))
+    except Exception:
+        pass

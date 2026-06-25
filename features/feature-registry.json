@@ -823,5 +823,19 @@
     "branch": "feature/HT-CD1878",
     "changelog_ref": "changelogs/HT-CD1878.md",
     "last_updated": "2026-06-25T18:48:40.260853+00:00"
+  },
+  "HT-09FBB3": {
+    "title": "ChromaDB/Drive KB ingestion robustness + local seed",
+    "scenario": "fix",
+    "status": "in_progress",
+    "created": "2026-06-25T19:30:00+00:00",
+    "agents_involved": [
+      "ba_compliance",
+      "knowledge_base"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-09FBB3",
+    "changelog_ref": "changelogs/HT-09FBB3.md",
+    "last_updated": "2026-06-25T18:54:42.089439+00:00"
   }
 }
