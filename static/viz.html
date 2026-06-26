@@ -58,6 +58,34 @@
   #stop-btn.hidden { display: none; }
   .prompt { font-size: 11px; color: var(--text-dim); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* ── Steps strip (expectation gray → progress color) ───── */
+  .steps-strip {
+    display: none; align-items: center; gap: 6px;
+    overflow-x: auto; padding: 10px 24px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    flex-shrink: 0;
+  }
+  .strip-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-dim); margin-right: 8px; white-space: nowrap; }
+  .step-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 14px; font-size: 11px; white-space: nowrap;
+    border: 1px solid var(--border); color: var(--text-dim); background: #ffffff06;
+    transition: color .3s, border-color .3s, background .3s;
+  }
+  .step-pill .step-num { font-weight: 700; opacity: .55; }
+  .step-pill.running { border-color: var(--accent); color: var(--accent); background: #3b82f618;
+    animation: pulse-glow 1.2s ease-in-out infinite; }
+  .step-pill.done    { border-color: var(--green); color: var(--green); background: #22c55e12; }
+  .step-pill.error   { border-color: var(--red);   color: var(--red);   background: #ef444412; }
+  .step-arrow { color: var(--text-dim); font-size: 10px; flex-shrink: 0; }
+  .substep-line {
+    display: none; padding: 7px 24px; font-size: 11px; color: var(--text-dim);
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .substep-line .substep-agent { color: var(--accent); font-weight: 600; }
+
   /* ── Main area ──────────────────────────── */
   main {
     flex: 1; display: flex; overflow: hidden;
@@ -236,6 +264,9 @@
   <span class="ticket" id="ticket-display"></span>
   <button id="stop-btn" class="hidden" title="Stop this run at the next step">🛑 Stop</button>
 </header>
+
+<div class="steps-strip" id="steps-strip"></div>
+<div class="substep-line" id="substep-line"></div>
 
 <main>
   <div class="graph-panel">
@@ -451,6 +482,52 @@ function highlightScenario(scenario, path) {
   });
 }
 
+// ── Steps strip (expectation gray → progress color) ──────
+
+let planSteps = [];
+
+function renderSteps(data) {
+  planSteps = data.steps || [];
+  const strip = document.getElementById('steps-strip');
+  strip.innerHTML = '';
+  if (data.label) {
+    const lbl = document.createElement('span');
+    lbl.className = 'strip-label';
+    lbl.textContent = (data.kind === 'command' ? '' : 'Plan: ') + data.label;
+    strip.appendChild(lbl);
+  }
+  planSteps.forEach((s, i) => {
+    if (i > 0) {
+      const a = document.createElement('span');
+      a.className = 'step-arrow'; a.textContent = '→';
+      strip.appendChild(a);
+    }
+    const pill = document.createElement('div');
+    pill.className = 'step-pill';
+    pill.id = 'step-' + s.id;
+    pill.innerHTML = `<span class="step-num">${i + 1}</span><span>${s.label || s.id}</span>`;
+    strip.appendChild(pill);
+  });
+  strip.style.display = planSteps.length ? 'flex' : 'none';
+  // Commands (e.g. /reload-kb) have no DAG — hide the graph, lean on the strip.
+  document.getElementById('graph-svg').style.display = data.kind === 'command' ? 'none' : '';
+}
+
+function setStepState(id, state) {
+  const pill = document.getElementById('step-' + id);
+  if (!pill) return;
+  pill.classList.remove('running', 'done', 'error');
+  if (state) pill.classList.add(state);
+  if (state === 'running') pill.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+}
+
+function setSubstep(agent, detail) {
+  const line = document.getElementById('substep-line');
+  if (!detail) { line.style.display = 'none'; line.innerHTML = ''; return; }
+  line.style.display = 'block';
+  line.innerHTML = `<span class="substep-agent">${agent || ''}</span> ${agent ? '— ' : ''}${detail}`;
+}
+
 // ── Timeline ─────────────────────────────────
 
 function addTimelineEntry(time, text, cls) {
@@ -512,22 +589,49 @@ function connectSSE(ticketId) {
     addTimelineEntry(null, `🔀 Scenario: <em>${d.scenario.toUpperCase()}</em>`, 'tl-routing');
   });
 
+  es.addEventListener('plan_ready', e => {
+    const d = JSON.parse(e.data);
+    renderSteps(d);
+    addTimelineEntry(d.timestamp, `📋 Expecting ${(d.steps || []).length} steps`, 'tl-routing');
+  });
+
   es.addEventListener('agent_start', e => {
     const d = JSON.parse(e.data);
     setNodeState(d.agent, 'running');
+    setStepState(d.agent, 'running');
+    setSubstep(d.agent, 'started');
     addTimelineEntry(d.timestamp, `<em>${d.agent}</em> started`, 'tl-start');
   });
 
   es.addEventListener('agent_end', e => {
     const d = JSON.parse(e.data);
-    setNodeState(d.agent, 'completed');
+    setNodeState(d.agent, d.status === 'stopped' ? 'failed' : 'completed');
+    setStepState(d.agent, d.status === 'stopped' ? 'error' : 'done');
     addTimelineEntry(d.timestamp, `<em>${d.agent}</em> → ${d.status}`, 'tl-end');
   });
 
   es.addEventListener('agent_error', e => {
     const d = JSON.parse(e.data);
     setNodeState(d.agent, 'failed');
+    setStepState(d.agent, 'error');
+    setSubstep(d.agent, '❌ ' + (d.error || ''));
     addTimelineEntry(d.timestamp, `<em>${d.agent}</em> ❌ ${d.error}`, 'tl-error');
+  });
+
+  es.addEventListener('agent_progress', e => {
+    const d = JSON.parse(e.data);
+    if (d.agent) setStepState(d.agent, 'running');
+    setSubstep(d.agent, d.step + (d.detail ? ' — ' + d.detail : ''));
+    addTimelineEntry(d.timestamp, `<em>${d.agent}</em>: ${d.step}`, '');
+  });
+
+  es.addEventListener('step_update', e => {  // command stages (e.g. /reload-kb)
+    const d = JSON.parse(e.data);
+    const state = d.state === 'done' ? 'done' : d.state === 'error' ? 'error' : 'running';
+    setStepState(d.step, state);
+    if (d.detail) setSubstep(d.step, d.detail);
+    addTimelineEntry(d.timestamp, `${d.step}: ${d.state}${d.detail ? ' — ' + d.detail : ''}`,
+      d.state === 'error' ? 'tl-error' : 'tl-start');
   });
 
   es.addEventListener('pipeline_complete', e => {
@@ -587,6 +691,15 @@ if (ticketId) {
     // Switch to the discovered pipeline's stream.
     window.history.replaceState({}, '', `?ticket_id=${d.ticket_id}`);
     connectSSE(d.ticket_id);
+  });
+  // Non-pipeline commands (e.g. /reload-kb) announce themselves via plan_ready.
+  lobby.addEventListener('plan_ready', e => {
+    const d = JSON.parse(e.data);
+    if (!d.ticket_id) return;
+    lobby.close();
+    window.history.replaceState({}, '', `?ticket_id=${d.ticket_id}`);
+    connectSSE(d.ticket_id);
+    renderSteps(d);
   });
   lobby.onerror = () => {
     setConnStatus('dead', 'Server not reachable — start with: python -m core.notifications.slack_commands');

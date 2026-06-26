@@ -1031,5 +1031,16 @@
     "branch": "feature/HT-B14F43",
     "changelog_ref": "changelogs/HT-B14F43.md",
     "last_updated": "2026-06-26T10:33:19.388891+00:00"
+  },
+  "HT-55A729": {
+    "title": "/viz steps strip (expectation gray->color) + substep line",
+    "scenario": "feature",
+    "status": "completed",
+    "created": "2026-06-26T05:00:00+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-55A729",
+    "changelog_ref": "changelogs/HT-55A729.md",
+    "last_updated": "2026-06-26T10:36:47.705970+00:00"
   }
 }
