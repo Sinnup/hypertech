@@ -30,6 +30,7 @@ def run_pipeline(
     ticket_id: str,
     prompt: str,
     resume: bool = False,
+    scenario: Optional[str] = None,
 ) -> dict:
     """
     Run the full LangGraph pipeline for a ticket.
@@ -77,7 +78,7 @@ def run_pipeline(
     else:
         if resume and not checkpoint_exists(ticket_id):
             print(f"   ⚠️  No checkpoint found for {ticket_id} — starting fresh")
-        state = new_state(ticket_id=ticket_id, prompt=prompt)
+        state = new_state(ticket_id=ticket_id, prompt=prompt, scenario=scenario)
 
     graph = build()
 

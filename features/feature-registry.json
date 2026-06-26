@@ -924,7 +924,7 @@
   "HT-025158": {
     "title": "Build a web payment screen: a button simulates a payment and shows success.",
     "scenario": "production",
-    "status": "compliance_checked",
+    "status": "resumed_at_index_1",
     "created": "2026-06-26T02:01:49.059886+00:00",
     "agents_involved": [
       "orchestrator",
@@ -933,7 +933,7 @@
     "human_approvals": [],
     "branch": "feature/HT-025158",
     "changelog_ref": "changelogs/HT-025158.md",
-    "last_updated": "2026-06-26T02:05:38.752382+00:00",
+    "last_updated": "2026-06-26T08:50:20.104499+00:00",
     "resumed": true
   },
   "HT-08AFDC": {
@@ -949,5 +949,18 @@
     "branch": "feature/HT-08AFDC",
     "changelog_ref": "changelogs/HT-08AFDC.md",
     "last_updated": "2026-06-26T02:08:21.210836+00:00"
+  },
+  "HT-E398C6": {
+    "title": "/new --scenario forwarding (honor forced scenario)",
+    "scenario": "fix",
+    "status": "completed",
+    "created": "2026-06-26T02:20:00+00:00",
+    "agents_involved": [
+      "orchestrator"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-E398C6",
+    "changelog_ref": "changelogs/HT-E398C6.md",
+    "last_updated": "2026-06-26T08:56:04.374529+00:00"
   }
 }

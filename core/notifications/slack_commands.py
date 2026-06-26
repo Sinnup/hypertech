@@ -231,7 +231,7 @@ def _handle_new(text: str, user_id: str):
     def _run():
         try:
             from main import run_pipeline
-            result = run_pipeline(ticket_id, prompt)
+            result = run_pipeline(ticket_id, prompt, scenario=scenario_hint)
 
             status = result.get("status", "unknown")
             scenario = result.get("scenario", "?")

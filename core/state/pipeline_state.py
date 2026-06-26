@@ -55,6 +55,9 @@ class PipelineState(TypedDict):
     # Identity (scalar — last write wins)
     ticket_id: Annotated[str, _keep_latest]
     scenario: Annotated[str, _keep_latest]
+    # Explicit scenario forced by the caller (e.g. /new --scenario production).
+    # When set, the orchestrator honors it instead of classifying the prompt.
+    scenario_override: Annotated[Optional[str], _keep_latest]
     human_prompt: Annotated[str, _keep_latest]
 
     # Routing
@@ -119,12 +122,17 @@ class PipelineState(TypedDict):
 # Factory
 # ---------------------------------------------------------------------------
 
-def new_state(ticket_id: str, prompt: str) -> PipelineState:
-    """Create a fresh pipeline state for a new ticket."""
+def new_state(ticket_id: str, prompt: str, scenario: Optional[str] = None) -> PipelineState:
+    """Create a fresh pipeline state for a new ticket.
+
+    ``scenario`` (optional) forces the pipeline scenario — the orchestrator
+    honors it instead of classifying the prompt.
+    """
     now = datetime.now(timezone.utc).isoformat()
     return PipelineState(
         ticket_id=ticket_id,
-        scenario="poc",           # overwritten by orchestrator after classification
+        scenario=scenario or "poc",   # overwritten by orchestrator after classification
+        scenario_override=scenario,
         human_prompt=prompt,
         current_agent="orchestrator",
         next_agent=None,

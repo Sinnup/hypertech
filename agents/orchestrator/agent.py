@@ -121,16 +121,23 @@ def run(state: PipelineState) -> PipelineState:
     if client:
         client.update_current_span(input={"prompt": prompt, "ticket_id": ticket_id})
 
-    # ---- Step 1: classify intent ------------------------------------------
-    classification = classify(prompt, ticket_id=ticket_id)
-    scenario = classification["scenario"]
-    confidence = classification.get("confidence", 0.90)
-
-    slack.status(
-        ticket_id,
-        f"🔍 Classified as *{scenario.upper()}* "
-        f"(confidence: {confidence:.0%})"
-    )
+    # ---- Step 1: classify intent (or honor a forced scenario) -------------
+    override = state.get("scenario_override")
+    if override:
+        scenario = override
+        confidence = 0.95
+        classification = {"scenario": scenario, "confidence": confidence,
+                          "reason": "forced via --scenario"}
+        slack.status(ticket_id, f"🎯 Scenario forced to *{scenario.upper()}* (--scenario)")
+    else:
+        classification = classify(prompt, ticket_id=ticket_id)
+        scenario = classification["scenario"]
+        confidence = classification.get("confidence", 0.90)
+        slack.status(
+            ticket_id,
+            f"🔍 Classified as *{scenario.upper()}* "
+            f"(confidence: {confidence:.0%})"
+        )
 
     # ---- Step 2: build dynamic agent plan ---------------------------------
     agent_plan = _build_plan(scenario, prompt)
