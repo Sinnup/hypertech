@@ -74,20 +74,26 @@ def circuit_breaker(
             t0 = time.monotonic()
             result = CircuitBreakerResult(service=service_name)
 
-            # === Primary path ===
+            # === Primary path (timeout-bounded, never blocks on a hung worker) ===
+            # NOTE: do NOT use `with ThreadPoolExecutor() as pool:` — its __exit__
+            # calls shutdown(wait=True), which blocks on a hung worker even after
+            # future.result() times out, defeating the whole timeout (observed:
+            # a wedged ChromaDB HttpClient hung ba_compliance forever). Manage the
+            # pool manually and shut it down without waiting.
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(func, *args, **kwargs)
-                    ret = future.result(timeout=timeout)
-
+                future = pool.submit(func, *args, **kwargs)
+                ret = future.result(timeout=timeout)
                 result.status = "primary_ok"
                 result.latency_ms = (time.monotonic() - t0) * 1000
                 return ret
-
             except concurrent.futures.TimeoutError:
                 result.primary_error = f"Timeout after {timeout}s"
             except Exception as exc:
                 result.primary_error = str(exc)
+            finally:
+                # Don't wait on a possibly-hung worker — that's the point of the timeout.
+                pool.shutdown(wait=False, cancel_futures=True)
 
             # === Primary failed — record in Langfuse ===
             client = get_client()

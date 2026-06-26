@@ -921,21 +921,6 @@
     "resumed": true,
     "deploy_url": "http://localhost:53900/index.html"
   },
-  "HT-025158": {
-    "title": "Build a web payment screen: a button simulates a payment and shows success.",
-    "scenario": "production",
-    "status": "resumed_at_index_1",
-    "created": "2026-06-26T02:01:49.059886+00:00",
-    "agents_involved": [
-      "orchestrator",
-      "ba_compliance"
-    ],
-    "human_approvals": [],
-    "branch": "feature/HT-025158",
-    "changelog_ref": "changelogs/HT-025158.md",
-    "last_updated": "2026-06-26T08:50:20.104499+00:00",
-    "resumed": true
-  },
   "HT-08AFDC": {
     "title": "Shared approval store \u2014 fix Slack approvals not resuming (__main__ module split)",
     "scenario": "fix",
@@ -962,5 +947,34 @@
     "branch": "feature/HT-E398C6",
     "changelog_ref": "changelogs/HT-E398C6.md",
     "last_updated": "2026-06-26T08:56:04.374529+00:00"
+  },
+  "HT-7D44E9": {
+    "title": "Build an Android TPV app: a button press simulates card insertion and processes ",
+    "scenario": "production",
+    "status": "resumed_at_index_1",
+    "created": "2026-06-26T08:59:11.033415+00:00",
+    "agents_involved": [
+      "orchestrator",
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-7D44E9",
+    "changelog_ref": "changelogs/HT-7D44E9.md",
+    "last_updated": "2026-06-26T09:13:06.165108+00:00",
+    "resumed": true
+  },
+  "HT-F3FBAC": {
+    "title": "Circuit breaker hangs on wedged dependency (ThreadPoolExecutor shutdown wait)",
+    "scenario": "fix",
+    "status": "completed",
+    "created": "2026-06-26T03:15:00+00:00",
+    "agents_involved": [
+      "ba_compliance",
+      "circuit_breaker"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-F3FBAC",
+    "changelog_ref": "changelogs/HT-F3FBAC.md",
+    "last_updated": "2026-06-26T09:22:34.172743+00:00"
   }
 }
