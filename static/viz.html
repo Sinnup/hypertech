@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hypertech — Pipeline Viz</title>
+<style>
+  :root {
+    --bg: #0a0a1a;
+    --surface: #14142b;
+    --border: #2a2a4a;
+    --text: #c8c8dc;
+    --text-dim: #6b6b8a;
+    --accent: #3b82f6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --poc: #8b5cf6;
+    --internal: #06b6d4;
+    --production: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ─────────────────────────────── */
+  header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  header h1 { font-size: 14px; font-weight: 600; letter-spacing: .04em; }
+  .badge {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 6px; letter-spacing: .06em;
+  }
+  .badge-poc       { background: #8b5cf620; color: var(--poc); border: 1px solid #8b5cf640; }
+  .badge-internal  { background: #06b6d420; color: var(--internal); border: 1px solid #06b6d440; }
+  .badge-production { background: #f59e0b20; color: var(--production); border: 1px solid #f59e0b40; }
+  .badge-unknown   { background: #6b6b8a20; color: var(--text-dim); border: 1px solid #6b6b8a40; }
+  .ticket { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+  .prompt { font-size: 11px; color: var(--text-dim); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Main area ──────────────────────────── */
+  main {
+    flex: 1; display: flex; overflow: hidden;
+  }
+
+  /* ── SVG graph panel ────────────────────── */
+  /* Scrollable so the whole DAG is reachable — the graph grows tall with the
+     full agent roster and was being clipped by a fixed-size viewport. */
+  .graph-panel {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    min-width: 0;
+    text-align: center;   /* center the (inline-block) svg horizontally */
+  }
+  svg#graph-svg { display: inline-block; }
+
+  /* Node styles */
+  .node-group { cursor: default; transition: opacity .3s; }
+  .node-rect {
+    fill: var(--surface);
+    stroke: var(--border);
+    stroke-width: 2;
+    rx: 8; ry: 8;
+    transition: fill .4s, stroke .4s, filter .4s;
+  }
+  .node-label {
+    fill: var(--text);
+    font-size: 11px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    font-family: inherit;
+    pointer-events: none;
+    transition: fill .4s;
+  }
+  .node-status-icon {
+    font-size: 14px;
+    text-anchor: middle;
+    dominant-baseline: central;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+
+  /* Node states */
+  .node-running .node-rect {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 8px #3b82f660);
+    animation: pulse-glow 1.2s ease-in-out infinite;
+  }
+  .node-running .node-label { fill: var(--accent); }
+
+  .node-completed .node-rect {
+    fill: #22c55e12;
+    stroke: var(--green);
+    stroke-width: 2;
+  }
+  .node-completed .node-label { fill: var(--green); }
+  .node-completed .node-status-icon { opacity: 1; fill: var(--green); }
+
+  .node-failed .node-rect {
+    fill: #ef444412;
+    stroke: var(--red);
+    stroke-width: 2;
+  }
+  .node-failed .node-label { fill: var(--red); }
+  .node-failed .node-status-icon { opacity: 1; fill: var(--red); }
+
+  .node-dimmed { opacity: 0.3; }
+
+  @keyframes pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 8px #3b82f640); }
+    50%      { filter: drop-shadow(0 0 18px #3b82f680); }
+  }
+
+  /* Edge styles */
+  .edge-path {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 2;
+    transition: stroke .5s, opacity .5s, stroke-dasharray .5s;
+  }
+  .edge-arrow {
+    fill: var(--border);
+    transition: fill .5s;
+  }
+  .edge-dimmed {
+    opacity: 0.12;
+  }
+  .edge-active {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-dasharray: 8 6;
+    animation: dash-flow .6s linear infinite;
+  }
+  .edge-completed {
+    stroke: var(--green);
+    opacity: 0.7;
+  }
+  .edge-active .edge-arrow, .edge-completed .edge-arrow {
+    /* arrows inherit via marker, handled separately */
+  }
+
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -14; }
+  }
+
+  /* END node */
+  .end-circle { fill: var(--surface); stroke: var(--border); stroke-width: 2; }
+  .end-label { fill: var(--text-dim); font-size: 10px; text-anchor: middle; dominant-baseline: central; font-family: inherit; }
+
+  /* ── Sidebar ────────────────────────────── */
+  .sidebar {
+    width: 320px;
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .sidebar h3 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    padding: 14px 20px 10px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .timeline {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .timeline:empty::after {
+    content: 'Waiting for pipeline events…';
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  .tl-entry {
+    padding: 6px 0;
+    border-bottom: 1px solid #ffffff08;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .tl-time { color: var(--text-dim); font-size: 10px; white-space: nowrap; min-width: 72px; }
+  .tl-event { color: var(--text); }
+  .tl-event em { font-style: normal; font-weight: 600; }
+  .tl-routing { color: var(--amber); }
+  .tl-start { color: var(--accent); }
+  .tl-end { color: var(--green); }
+  .tl-error { color: var(--red); }
+
+  /* ── Footer ─────────────────────────────── */
+  footer {
+    padding: 8px 24px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 10px; color: var(--text-dim);
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-live  { background: var(--green); }
+  .dot-dead  { background: var(--red); }
+  .dot-idle  { background: var(--amber); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚡ Hypertech Pipeline</h1>
+  <span id="scenario-badge" class="badge badge-unknown">—</span>
+  <span class="prompt" id="prompt-display"></span>
+  <span class="ticket" id="ticket-display"></span>
+</header>
+
+<main>
+  <div class="graph-panel">
+    <svg viewBox="0 0 900 780" id="graph-svg">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" class="edge-arrow" />
+        </marker>
+        <filter id="glass">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="0.5" />
+        </filter>
+      </defs>
+      <g id="edges-layer"></g>
+      <g id="nodes-layer"></g>
+      <g id="end-nodes-layer"></g>
+    </svg>
+  </div>
+  <aside class="sidebar">
+    <h3>📋 Event Timeline</h3>
+    <div class="timeline" id="timeline"></div>
+  </aside>
+</main>
+
+<footer>
+  <span class="dot dot-idle" id="conn-dot"></span>
+  <span id="conn-status">Idle — waiting for pipeline</span>
+</footer>
+
+<script>
+// ── Graph rendering ──────────────────────────
+let graphData = null;
+let activeScenario = null;
+let nodeStates = {};  // agent → 'pending' | 'running' | 'completed' | 'failed'
+
+const NODE_W = 160, NODE_H = 48;
+
+function renderGraph(data) {
+  graphData = data;
+  const edgesLayer = document.getElementById('edges-layer');
+  const nodesLayer = document.getElementById('nodes-layer');
+  const endLayer = document.getElementById('end-nodes-layer');
+
+  edgesLayer.innerHTML = '';
+  nodesLayer.innerHTML = '';
+  endLayer.innerHTML = '';
+
+  // Edges
+  data.edges.forEach(e => {
+    const from = data.nodes.find(n => n.id === e.from);
+    const toTarget = e.to === '__end__'
+      ? { id: '__end__', x: from.x, y: from.y + 110 }
+      : data.nodes.find(n => n.id === e.to);
+
+    if (!from || !toTarget) return;
+
+    const x1 = from.x, y1 = from.y + NODE_H/2;
+    const x2 = toTarget.id === '__end__' ? toTarget.x : toTarget.x;
+    const y2 = toTarget.id === '__end__' ? toTarget.y : toTarget.y - NODE_H/2;
+
+    // Bezier for diagonal, straight for vertical
+    const dx = Math.abs(x2 - x1);
+    const dy = y2 - y1;
+    let d;
+    if (dx > 5) {
+      const cy = y1 + dy * 0.5;
+      d = `M${x1},${y1} C${x1},${cy} ${x2},${cy} ${x2},${y2}`;
+    } else {
+      d = `M${x1},${y1} L${x2},${y2}`;
+    }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+    path.classList.add('edge-path');
+    path.dataset.from = e.from;
+    path.dataset.to = e.to;
+    path.dataset.paths = (e.paths || []).join(',');
+    edgesLayer.appendChild(path);
+  });
+
+  // Nodes
+  data.nodes.forEach(n => {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${n.x - NODE_W/2}, ${n.y - NODE_H/2})`);
+    g.classList.add('node-group');
+    g.id = `node-${n.id}`;
+    g.dataset.agent = n.id;
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('width', NODE_W);
+    rect.setAttribute('height', NODE_H);
+    rect.classList.add('node-rect');
+    g.appendChild(rect);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', NODE_W / 2);
+    label.setAttribute('y', NODE_H / 2 - 6);
+    label.classList.add('node-label');
+    label.textContent = n.label;
+    g.appendChild(label);
+
+    // Status icon line (checkmark / X)
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    icon.setAttribute('x', NODE_W / 2);
+    icon.setAttribute('y', NODE_H / 2 + 12);
+    icon.classList.add('node-status-icon');
+    icon.textContent = '';
+    g.appendChild(icon);
+
+    nodesLayer.appendChild(g);
+    nodeStates[n.id] = 'pending';
+  });
+
+  // END nodes
+  const endNodes = new Set(data.edges.filter(e => e.to === '__end__').map(e => e.from));
+  endNodes.forEach(fromId => {
+    const from = data.nodes.find(n => n.id === fromId);
+    if (!from) return;
+    const ex = from.x, ey = from.y + 110;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${ex - 18}, ${ey - 12})`);
+    g.id = `end-${fromId}`;
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', 18); circle.setAttribute('cy', 12);
+    circle.setAttribute('r', 14);
+    circle.classList.add('end-circle');
+    g.appendChild(circle);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', 18); label.setAttribute('y', 12);
+    label.classList.add('end-label');
+    label.textContent = 'END';
+    g.appendChild(label);
+
+    endLayer.appendChild(g);
+  });
+
+  fitCanvas(data);
+}
+
+// Size the SVG to the actual graph bounds (1 unit = 1px) so the whole DAG is
+// rendered at a readable scale; the .graph-panel scrolls when it overflows.
+function fitCanvas(data) {
+  const svg = document.getElementById('graph-svg');
+  if (!data.nodes || !data.nodes.length) return;
+  const xs = data.nodes.map(n => n.x);
+  const ys = data.nodes.map(n => n.y);
+  const hasEnd = (data.edges || []).some(e => e.to === '__end__');
+  const PAD = 60;
+  const minX = Math.min(...xs) - NODE_W / 2 - PAD;
+  const minY = Math.min(...ys) - NODE_H / 2 - PAD;
+  const maxX = Math.max(...xs) + NODE_W / 2 + PAD;
+  const maxY = (hasEnd ? Math.max(...ys) + 110 : Math.max(...ys)) + NODE_H / 2 + PAD;
+  const W = Math.max(1, maxX - minX);
+  const H = Math.max(1, maxY - minY);
+  svg.setAttribute('viewBox', `${minX} ${minY} ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  svg.style.maxWidth = 'none';
+}
+
+// ── State updates ────────────────────────────
+
+function setNodeState(agent, state) {
+  nodeStates[agent] = state;
+  const el = document.getElementById(`node-${agent}`);
+  if (!el) return;
+  el.classList.remove('node-running', 'node-completed', 'node-failed');
+  if (state === 'running') el.classList.add('node-running');
+  if (state === 'completed') {
+    el.classList.add('node-completed');
+    el.querySelector('.node-status-icon').textContent = '✓';
+  }
+  if (state === 'failed') {
+    el.classList.add('node-failed');
+    el.querySelector('.node-status-icon').textContent = '✗';
+  }
+
+  // Update edge: completed edge from previous agent to this one
+  updateEdges(agent, state);
+}
+
+function updateEdges(agent, state) {
+  const paths = document.querySelectorAll('.edge-path');
+  paths.forEach(p => {
+    if (state === 'completed' && p.dataset.to === agent) {
+      p.classList.add('edge-completed');
+      p.classList.remove('edge-active');
+    }
+    if (state === 'running' && p.dataset.to === agent) {
+      p.classList.add('edge-active');
+      p.classList.remove('edge-dimmed');
+    }
+  });
+}
+
+function highlightScenario(scenario, path) {
+  activeScenario = scenario;
+  const allEdges = document.querySelectorAll('.edge-path');
+  allEdges.forEach(p => {
+    const paths = (p.dataset.paths || '').split(',');
+    if (!paths.includes(scenario)) {
+      p.classList.add('edge-dimmed');
+    }
+  });
+
+  // Dim nodes not on this path
+  document.querySelectorAll('.node-group').forEach(g => {
+    if (!path.includes(g.dataset.agent)) {
+      g.classList.add('node-dimmed');
+    }
+  });
+}
+
+// ── Timeline ─────────────────────────────────
+
+function addTimelineEntry(time, text, cls) {
+  const tl = document.getElementById('timeline');
+  const div = document.createElement('div');
+  div.className = 'tl-entry';
+  const ts = time ? new Date(time).toLocaleTimeString() : '--:--:--';
+  div.innerHTML = `<span class="tl-time">${ts}</span><span class="tl-event ${cls || ''}">${text}</span>`;
+  tl.prepend(div);
+}
+
+// ── SSE connection ───────────────────────────
+
+let es = null;
+
+function connectSSE(ticketId) {
+  if (es) es.close();
+
+  const url = `/viz/events?ticket_id=${encodeURIComponent(ticketId)}`;
+  es = new EventSource(url);
+
+  es.addEventListener('connected', () => {
+    setConnStatus('live', 'Connected — listening');
+  });
+
+  es.addEventListener('pipeline_start', e => {
+    const d = JSON.parse(e.data);
+    document.getElementById('ticket-display').textContent = d.ticket_id;
+    document.getElementById('prompt-display').textContent = d.prompt || '';
+    renderGraph(d.graph);
+    addTimelineEntry(null, '🚀 Pipeline started', 'tl-start');
+    setConnStatus('live', 'Pipeline running');
+  });
+
+  es.addEventListener('scenario_classified', e => {
+    const d = JSON.parse(e.data);
+    const badge = document.getElementById('scenario-badge');
+    badge.textContent = d.scenario;
+    badge.className = `badge badge-${d.scenario}`;
+    highlightScenario(d.scenario, d.path);
+    addTimelineEntry(null, `🔀 Scenario: <em>${d.scenario.toUpperCase()}</em>`, 'tl-routing');
+  });
+
+  es.addEventListener('agent_start', e => {
+    const d = JSON.parse(e.data);
+    setNodeState(d.agent, 'running');
+    addTimelineEntry(d.timestamp, `<em>${d.agent}</em> started`, 'tl-start');
+  });
+
+  es.addEventListener('agent_end', e => {
+    const d = JSON.parse(e.data);
+    setNodeState(d.agent, 'completed');
+    addTimelineEntry(d.timestamp, `<em>${d.agent}</em> → ${d.status}`, 'tl-end');
+  });
+
+  es.addEventListener('agent_error', e => {
+    const d = JSON.parse(e.data);
+    setNodeState(d.agent, 'failed');
+    addTimelineEntry(d.timestamp, `<em>${d.agent}</em> ❌ ${d.error}`, 'tl-error');
+  });
+
+  es.addEventListener('pipeline_complete', e => {
+    const d = JSON.parse(e.data);
+    addTimelineEntry(null, `✅ Complete — ${d.status}`, 'tl-end');
+    setConnStatus('live', 'Pipeline complete');
+  });
+
+  es.addEventListener('pipeline_error', e => {
+    const d = JSON.parse(e.data);
+    addTimelineEntry(null, `❌ ${d.error}`, 'tl-error');
+    setConnStatus('dead', 'Pipeline failed');
+  });
+
+  es.onerror = () => {
+    setConnStatus('dead', 'Connection lost — retrying…');
+  };
+
+  es.onopen = () => {
+    setConnStatus('live', 'Connected');
+  };
+}
+
+function setConnStatus(state, msg) {
+  document.getElementById('conn-dot').className = `dot dot-${state}`;
+  document.getElementById('conn-status').textContent = msg;
+}
+
+// ── Bootstrap ────────────────────────────────
+
+// Fetch graph structure so the DAG is always visible.
+fetch('/viz/graph')
+  .then(r => r.json())
+  .then(data => {
+    renderGraph(data);
+    document.getElementById('scenario-badge').textContent = 'IDLE';
+    document.getElementById('scenario-badge').className = 'badge badge-unknown';
+  })
+  .catch(() => {});
+
+const params = new URLSearchParams(window.location.search);
+const ticketId = params.get('ticket_id');
+
+if (ticketId) {
+  // Specific pipeline — connect directly.
+  connectSSE(ticketId);
+} else {
+  // No ticket yet — connect to the lobby and auto-discover.
+  setConnStatus('idle', 'Waiting for pipeline — start one with python main.py or /new');
+  const lobby = new EventSource('/viz/events/lobby');
+  lobby.addEventListener('connected', () => {
+    setConnStatus('live', 'Listening for pipelines...');
+  });
+  lobby.addEventListener('pipeline_start', e => {
+    const d = JSON.parse(e.data);
+    lobby.close();
+    // Switch to the discovered pipeline's stream.
+    window.history.replaceState({}, '', `?ticket_id=${d.ticket_id}`);
+    connectSSE(d.ticket_id);
+  });
+  lobby.onerror = () => {
+    setConnStatus('dead', 'Server not reachable — start with: python -m core.notifications.slack_commands');
+  };
+}
+</script>
+</body>
+</html>

@@ -37,3 +37,6 @@ STATE.md
 
 # LangGraph Studio (`langgraph dev`) local cache
 .langgraph_api/
+
+# static/viz.html is a tracked source file, not generated POC output
+!static/viz.html
