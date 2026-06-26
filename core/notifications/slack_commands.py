@@ -75,6 +75,8 @@ def slack_commands():
         return _handle_new(text, user_id)
     if command == "/answer":
         return _handle_answer(text, user_id)
+    if command == "/stop":
+        return _handle_stop(text, user_id)
     if command == "/resume":
         return _handle_resume(text, user_id)
     if command == "/checkpoints":
@@ -142,6 +144,23 @@ def _handle_reload_kb(user_id: str):
 
     Thread(target=_run, daemon=True).start()
     return jsonify({"text": "🔄 KB reload started — progress will post to #pipeline-alerts."}), 200
+
+
+def _handle_stop(text: str, user_id: str):
+    """Request a graceful stop of a running pipeline/command.
+
+    Usage: ``/stop HT-XXXXXX``  — halts at the next step; resume with ``/resume``.
+    """
+    ticket_id = text.strip().split()[0] if text.strip() else ""
+    if not (ticket_id.startswith("HT-") or ticket_id == "KB-RELOAD"):
+        return jsonify({"text": "Usage: `/stop HT-XXXXXX`"}), 200
+    from core.control.cancel import request_stop
+    request_stop(ticket_id)
+    slack.alert(f"🛑 *Stop requested* for {ticket_id} by <@{user_id}> — halting at the next step.")
+    return jsonify({
+        "text": f"🛑 Stop requested for *{ticket_id}* — it halts at the next step "
+                f"(resume later with `/resume {ticket_id}`)."
+    }), 200
 
 
 def _handle_deploy(text: str, user_id: str):
@@ -584,6 +603,15 @@ def slack_interactive():
     for action in actions:
         block_id = action.get("block_id", "")
         value = action.get("value", "")
+
+        # 🛑 Stop button — block_id "control_{ticket_id}", value "stop".
+        if value == "stop" or (block_id.startswith("control_") and value == "stop"):
+            stop_ticket = block_id.split("_", 1)[1] if "_" in block_id else (action.get("value_ticket") or "")
+            if stop_ticket:
+                from core.control.cancel import request_stop
+                request_stop(stop_ticket)
+                slack.alert(f"🛑 *Stop requested* for {stop_ticket} by <@{user}> — halting at the next step.")
+            continue
 
         # Parse block_id: "approval_{ticket_id}_{stage}"
         parts = block_id.split("_", 2)

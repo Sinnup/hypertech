@@ -257,6 +257,7 @@ def stream_pipeline(
     from core.checkpoint.manager import save as save_checkpoint
     from core.checkpoint.manager import delete as delete_checkpoint
     from core.state.state_manager import update_pipeline_status
+    from core.control.cancel import is_stop_requested, clear_stop
 
     # -- detect resume -----------------------------------------------------
     is_resume = state.get("resumed_from_checkpoint", False)
@@ -271,6 +272,7 @@ def stream_pipeline(
 
     final_state = dict(state)
     prev_node = None
+    stopped = False
 
     try:
         # -- iterate LangGraph stream ------------------------------------------
@@ -326,6 +328,26 @@ def stream_pipeline(
 
                 prev_node = node_name
 
+                # -- Stop control: halt gracefully at the next node boundary ----
+                if is_stop_requested(ticket_id):
+                    logger.info("Stop requested for %s — halting after %s", ticket_id, node_name)
+                    save_checkpoint(ticket_id, final_state)
+                    final_state["status"] = "stopped"
+                    emit_event(ticket_id, "agent_end", {
+                        "agent": node_name, "status": "stopped", "timestamp": _now(),
+                    })
+                    emit_event(ticket_id, "pipeline_stopped", {
+                        "after": node_name, "by": "user", "timestamp": _now(),
+                    })
+                    update_pipeline_status(final_state)
+                    clear_stop(ticket_id)
+                    stopped = True
+                    prev_node = None  # already emitted agent_end for this node
+                    break
+
+            if stopped:
+                break
+
     except BaseException:
         # -- Emergency checkpoint on any error before propagating -----------
         logger.warning(
@@ -352,9 +374,10 @@ def stream_pipeline(
     # An escalated run ends normally at human_escalation → END.  Deleting the
     # checkpoint here would strand the run with nothing to resume.  Keep it so
     # an approval (Slack button or /resume) can pick the pipeline back up.
-    if final_state.get("human_escalation"):
+    if final_state.get("human_escalation") or stopped:
         logger.info(
-            "Pipeline %s escalated — keeping checkpoint for resume", ticket_id
+            "Pipeline %s %s — keeping checkpoint for resume",
+            ticket_id, "stopped" if stopped else "escalated",
         )
     else:
         try:

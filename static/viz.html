@@ -48,6 +48,14 @@
   .badge-production { background: #f59e0b20; color: var(--production); border: 1px solid #f59e0b40; }
   .badge-unknown   { background: #6b6b8a20; color: var(--text-dim); border: 1px solid #6b6b8a40; }
   .ticket { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+  #stop-btn {
+    font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+    padding: 5px 12px; border-radius: 6px;
+    background: #ef444418; color: var(--red); border: 1px solid #ef444455;
+    transition: background .2s;
+  }
+  #stop-btn:hover { background: #ef444433; }
+  #stop-btn.hidden { display: none; }
   .prompt { font-size: 11px; color: var(--text-dim); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ── Main area ──────────────────────────── */
@@ -226,6 +234,7 @@
   <span id="scenario-badge" class="badge badge-unknown">—</span>
   <span class="prompt" id="prompt-display"></span>
   <span class="ticket" id="ticket-display"></span>
+  <button id="stop-btn" class="hidden" title="Stop this run at the next step">🛑 Stop</button>
 </header>
 
 <main>
@@ -463,8 +472,26 @@ function connectSSE(ticketId) {
   const url = `/viz/events?ticket_id=${encodeURIComponent(ticketId)}`;
   es = new EventSource(url);
 
+  // Stop button — request a graceful halt of this run.
+  const stopBtn = document.getElementById('stop-btn');
+  stopBtn.classList.remove('hidden');
+  stopBtn.onclick = () => {
+    stopBtn.disabled = true;
+    stopBtn.textContent = '🛑 Stopping…';
+    fetch(`/viz/stop?ticket_id=${encodeURIComponent(ticketId)}`, { method: 'POST' })
+      .catch(() => {});
+  };
+
   es.addEventListener('connected', () => {
     setConnStatus('live', 'Connected — listening');
+  });
+
+  es.addEventListener('pipeline_stopped', e => {
+    const d = JSON.parse(e.data);
+    addTimelineEntry(d.timestamp, `🛑 Stopped after <em>${d.after || '?'}</em> — resume with /resume`, 'tl-error');
+    setConnStatus('idle', 'Stopped — resume with /resume');
+    const b = document.getElementById('stop-btn');
+    b.classList.add('hidden'); b.disabled = false; b.textContent = '🛑 Stop';
   });
 
   es.addEventListener('pipeline_start', e => {

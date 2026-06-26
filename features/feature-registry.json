@@ -1007,5 +1007,16 @@
     "branch": "feature/HT-F0032C",
     "changelog_ref": "changelogs/HT-F0032C.md",
     "last_updated": "2026-06-26T10:06:01.397181+00:00"
+  },
+  "HT-337916": {
+    "title": "Stop control (cancel + /viz/stop + /stop + button)",
+    "scenario": "feature",
+    "status": "completed",
+    "created": "2026-06-26T04:30:00+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-337916",
+    "changelog_ref": "changelogs/HT-337916.md",
+    "last_updated": "2026-06-26T10:31:21.817536+00:00"
   }
 }
