@@ -985,5 +985,16 @@
     "branch": "feature/HT-81BC59",
     "changelog_ref": "changelogs/HT-81BC59.md",
     "last_updated": "2026-06-26T09:50:03.918918+00:00"
+  },
+  "HT-CDBC78": {
+    "title": "/viz dashboard shows whole graph (scrollable, dynamic viewBox)",
+    "scenario": "fix",
+    "status": "completed",
+    "created": "2026-06-26T03:55:00+00:00",
+    "agents_involved": [],
+    "human_approvals": [],
+    "branch": "feature/HT-CDBC78",
+    "changelog_ref": "changelogs/HT-CDBC78.md",
+    "last_updated": "2026-06-26T10:00:34.126334+00:00"
   }
 }
