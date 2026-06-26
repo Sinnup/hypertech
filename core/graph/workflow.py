@@ -64,11 +64,17 @@ def build() -> StateGraph:
     )
 
     # -- Context packer → next agent in plan (or END) -------------------------
-    graph.add_conditional_edges(
-        "context_packer",
-        _plan_router,
-        {},  # dynamic destinations — _plan_router returns agent name or END
-    )
+    # _plan_router returns an agent name or END at runtime. Declaring the full
+    # set of possible destinations (instead of an empty {}) doesn't change
+    # behavior, but it lets LangGraph render the context_packer → agent edges —
+    # otherwise every specialist agent appears disconnected in LangGraph Studio.
+    _packer_dests = {
+        name: name
+        for name, defn in agents.items()
+        if defn.visible and name not in ("orchestrator", "context_packer")
+    }
+    _packer_dests[END] = END
+    graph.add_conditional_edges("context_packer", _plan_router, _packer_dests)
 
     # -- Every visible agent → validation_gate --------------------------------
     # Exclude infrastructure nodes: orchestrator has its own edge, and
