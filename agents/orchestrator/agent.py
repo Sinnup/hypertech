@@ -175,6 +175,16 @@ def run(state: PipelineState) -> PipelineState:
     state["status"] = f"planned_{len(agent_plan)}_agents"
     state["last_updated"] = datetime.now(timezone.utc).isoformat()
 
+    # ── Expectation up front: announce the full plan (gray in /viz, numbered in Slack)
+    try:
+        from core.events.graph_events import emit_plan
+        steps = [{"id": a, "label": a.replace("_", " ").title()} for a in agent_plan]
+        emit_plan(ticket_id, "pipeline", scenario, steps)
+        plan_str = " → ".join(f"{i + 1}.{a}" for i, a in enumerate(agent_plan))
+        slack.status(ticket_id, f"📋 *Plan* ({len(agent_plan)} steps): {plan_str}")
+    except Exception:
+        logging.getLogger(__name__).debug("emit_plan failed", exc_info=True)
+
     state["agent_messages"].append(
         agent_message("orchestrator", first_agent or "none", "plan_ready", ticket_id, {
             "scenario": scenario,

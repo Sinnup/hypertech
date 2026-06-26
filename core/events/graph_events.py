@@ -237,6 +237,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def emit_plan(ticket_id: str, kind: str, label: str, steps: list[dict]) -> None:
+    """Announce the expected ordered steps so the viz renders them in gray.
+
+    ``kind`` is "pipeline" or "command"; ``steps`` is ``[{"id", "label"}, …]``.
+    """
+    emit_event(ticket_id, "plan_ready", {
+        "kind": kind, "label": label, "steps": steps, "timestamp": _now(),
+    })
+
+
+def emit_progress(ticket_id: str, agent: str, step: str, detail: str | None = None) -> None:
+    """Emit a fine-grained substep for *agent* (lights up the active step)."""
+    emit_event(ticket_id, "agent_progress", {
+        "agent": agent, "step": step, "detail": detail, "timestamp": _now(),
+    })
+
+
 def stream_pipeline(
     graph,
     state: dict,
