@@ -124,17 +124,24 @@ def _handle_status(ticket_id: str):
 def _handle_reload_kb(user_id: str):
     def _run():
         try:
-            result = drive_ingest.run()
-            slack.status(
-                "KB",
-                f"✅ KB reload complete — {result['ingested']} chunks ingested "
-                f"by <@{user_id}>"
+            slack.alert(f"🔄 *KB reload started* by <@{user_id}> — fetching from Google Drive…")
+            result = drive_ingest.run(
+                progress=lambda m: slack.alert(f"🔄 *KB reload*: {m}")
             )
-        except Exception as e:
-            slack.status("KB", f"❌ KB reload failed: {e}")
+            ingested = result.get("ingested", 0)
+            skipped = result.get("skipped", 0)
+            errors = result.get("errors", [])
+            if ingested == 0:
+                detail = errors[0].get("error", "no documents ingested") if errors else "no documents ingested"
+                slack.alert(f"⚠️ *KB reload finished with no data* — {detail}")
+            else:
+                extra = f", {len(errors)} chunk error(s)" if errors else ""
+                slack.alert(f"✅ *KB reload complete* — {ingested} chunks ingested ({skipped} skipped{extra}).")
+        except Exception as e:  # noqa: BLE001 — surface to Slack, never crash the thread
+            slack.alert(f"❌ *KB reload failed*: {e}")
 
     Thread(target=_run, daemon=True).start()
-    return jsonify({"text": "🔄 KB reload started — you'll get a Slack notification when done."}), 200
+    return jsonify({"text": "🔄 KB reload started — progress will post to #pipeline-alerts."}), 200
 
 
 def _handle_deploy(text: str, user_id: str):

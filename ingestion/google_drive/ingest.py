@@ -142,14 +142,19 @@ def _load_documents(file_paths: list[Path]) -> list:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def run(folder_id: str = None) -> dict:
+def run(folder_id: str = None, progress=None) -> dict:
     """
     Ingest all documents from the Drive folder into ChromaDB.
 
     Uses ``gdown`` for public folders by default.  Falls back to the
     service-account loader when ``GOOGLE_SERVICE_ACCOUNT_JSON`` points
     to an existing file.
+
+    ``progress`` (optional): a ``callable(str)`` invoked with a short message at
+    each stage (download, load, embed, done) so callers like the Slack
+    ``/reload-kb`` handler can stream progress instead of going silent.
     """
+    _p = progress if callable(progress) else (lambda _m: None)
     folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
     service_account_path = get_optional("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     sa_is_placeholder = _is_placeholder_sa(service_account_path)
@@ -179,6 +184,7 @@ def run(folder_id: str = None) -> dict:
             docs = _download_with_service_account(folder_id, service_account_path)
         else:
             print(f"[ingest] Downloading from public folder via gdown...")
+            _p("Downloading documents from Google Drive…")
             file_paths = _download_public_folder(folder_id, tmp_dir)
             if not file_paths:
                 hint = (
@@ -201,6 +207,7 @@ def run(folder_id: str = None) -> dict:
                     }],
                 }
             print(f"[ingest] Downloaded {len(file_paths)} file(s).")
+            _p(f"Downloaded {len(file_paths)} file(s) — loading…")
             docs = _load_documents(file_paths)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -213,6 +220,7 @@ def run(folder_id: str = None) -> dict:
         }
 
     print(f"[ingest] Loaded {len(docs)} document(s).")
+    _p(f"Loaded {len(docs)} document(s) — chunking, embedding & upserting (this is the slow part)…")
     return _chunk_and_upsert(docs)
 
 
