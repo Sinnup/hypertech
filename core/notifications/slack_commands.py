@@ -539,32 +539,19 @@ def _handle_answer(text: str, user_id: str):
 # Slack interactive message handler (approval buttons)
 # ---------------------------------------------------------------------------
 
-# In-memory approval events — keyed by (ticket_id, stage).
-# The circuit breaker polls these when waiting for human approval.
-_approval_events: dict[str, "threading.Event"] = {}
-_approval_results: dict[str, dict] = {}
-
 import threading
 
-
-def _approval_key(ticket_id: str, stage: str) -> str:
-    return f"{ticket_id}|{stage}"
-
-
-def register_approval_event(ticket_id: str, stage: str) -> threading.Event:
-    """Create an Event that the circuit breaker can wait on.
-    Returns the Event; set when Slack interactive handler receives the response.
-    """
-    key = _approval_key(ticket_id, stage)
-    evt = threading.Event()
-    _approval_events[key] = evt
-    return evt
-
-
-def get_approval_result(ticket_id: str, stage: str) -> dict | None:
-    """Return the approval result dict, or None if not yet received."""
-    key = _approval_key(ticket_id, stage)
-    return _approval_results.get(key)
+# Approval state lives in a dedicated module so it is a single shared instance
+# even though this file runs as __main__ (python -m core.notifications.slack_commands).
+# See core/notifications/approval_store.py for why this matters.
+from core.notifications.approval_store import (  # noqa: E402
+    _approval_events,
+    _approval_results,
+    _approval_key,
+    register_approval_event,
+    get_approval_result,
+    store_approval,
+)
 
 
 @app.route("/slack/interactive", methods=["POST"])

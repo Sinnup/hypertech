@@ -161,7 +161,7 @@ def _request_fallback_approval(
     human clicks a button.  Falls back to auto-approve after 120 s if no
     response is received (demo mode: don't block forever).
     """
-    from core.notifications.slack_commands import register_approval_event, get_approval_result
+    from core.notifications.approval_store import register_approval_event, get_approval_result
 
     ticket_id = f"CB-{service}-{id(threading.current_thread()) % 10000}"
 

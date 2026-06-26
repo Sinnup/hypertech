@@ -229,7 +229,7 @@ def _get_stored_approval(ticket_id: str, stage: str) -> dict | None:
     Returns the approval dict (with ``status`` key), or ``None`` if not found.
     """
     try:
-        from core.notifications.slack_commands import get_approval_result
+        from core.notifications.approval_store import get_approval_result
         return get_approval_result(ticket_id, stage)
     except Exception:
         return None
