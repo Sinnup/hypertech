@@ -154,7 +154,7 @@ def run(folder_id: str = None, progress=None) -> dict:
     each stage (download, load, embed, done) so callers like the Slack
     ``/reload-kb`` handler can stream progress instead of going silent.
     """
-    _p = progress if callable(progress) else (lambda _m: None)
+    _p = progress if callable(progress) else (lambda *a, **k: None)
     folder_id = folder_id or get("GOOGLE_DRIVE_FOLDER_ID")
     service_account_path = get_optional("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     sa_is_placeholder = _is_placeholder_sa(service_account_path)
@@ -184,7 +184,7 @@ def run(folder_id: str = None, progress=None) -> dict:
             docs = _download_with_service_account(folder_id, service_account_path)
         else:
             print(f"[ingest] Downloading from public folder via gdown...")
-            _p("Downloading documents from Google Drive…")
+            _p("download", "Downloading documents from Google Drive…")
             file_paths = _download_public_folder(folder_id, tmp_dir)
             if not file_paths:
                 hint = (
@@ -207,7 +207,7 @@ def run(folder_id: str = None, progress=None) -> dict:
                     }],
                 }
             print(f"[ingest] Downloaded {len(file_paths)} file(s).")
-            _p(f"Downloaded {len(file_paths)} file(s) — loading…")
+            _p("load", f"Downloaded {len(file_paths)} file(s) — loading…")
             docs = _load_documents(file_paths)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -220,22 +220,25 @@ def run(folder_id: str = None, progress=None) -> dict:
         }
 
     print(f"[ingest] Loaded {len(docs)} document(s).")
-    _p(f"Loaded {len(docs)} document(s) — chunking, embedding & upserting (this is the slow part)…")
-    return _chunk_and_upsert(docs)
+    _p("embed", f"Loaded {len(docs)} document(s) — chunking & embedding…")
+    return _chunk_and_upsert(docs, progress=progress)
 
 
 # ---------------------------------------------------------------------------
 # Chunk + upsert (shared by Drive ingest and local seeding)
 # ---------------------------------------------------------------------------
 
-def _chunk_and_upsert(docs: list) -> dict:
+def _chunk_and_upsert(docs: list, progress=None) -> dict:
     """Split LangChain documents into chunks and upsert them into ChromaDB."""
+    _p = progress if callable(progress) else (lambda *a, **k: None)
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=_CHUNK_SIZE,
         chunk_overlap=_CHUNK_OVERLAP,
     )
     chunks = splitter.split_documents(docs)
-    print(f"[ingest] Split into {len(chunks)} chunks.")
+    total = len(chunks)
+    print(f"[ingest] Split into {total} chunks.")
+    _p("upsert", f"Embedding & upserting {total} chunks…")
 
     ingested = 0
     skipped = 0
@@ -264,6 +267,7 @@ def _chunk_and_upsert(docs: list) -> dict:
             if len(batch_docs) >= 50:
                 chroma.upsert(batch_docs, batch_ids, batch_meta)
                 batch_docs, batch_ids, batch_meta = [], [], []
+                _p("upsert", f"Upserted {ingested}/{total} chunks…")
 
         except Exception as e:
             errors.append({"chunk": i, "error": str(e)})
@@ -274,6 +278,7 @@ def _chunk_and_upsert(docs: list) -> dict:
 
     summary = {"ingested": ingested, "skipped": skipped, "errors": errors}
     print(f"[ingest] Done — {ingested} chunks ingested, {skipped} skipped.")
+    _p("done", f"{ingested} chunks ingested")
     return summary
 
 

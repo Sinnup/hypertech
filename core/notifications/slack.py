@@ -28,8 +28,22 @@ def alert(text: str, channel: str = "pipeline-alerts") -> bool:
     return post(channel, text)
 
 
+def _emit_viz_progress(ticket_id: str, message: str) -> None:
+    """Mirror a status message into the /viz dashboard as a live substep.
+
+    Best-effort: every ``slack.status`` an agent already posts becomes a
+    real-time sub-state in the visualizer, with no per-agent changes.
+    """
+    try:
+        from core.events.graph_events import emit_progress
+        emit_progress(ticket_id, None, message)
+    except Exception:
+        pass
+
+
 def status(ticket_id: str, message: str) -> bool:
     channel = get_optional("SLACK_CHANNEL_STATUS", "agent-status")
+    _emit_viz_progress(ticket_id, message)
     return post(channel, f"[{ticket_id}] {message}")
 
 

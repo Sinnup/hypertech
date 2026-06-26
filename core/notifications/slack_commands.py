@@ -123,27 +123,61 @@ def _handle_status(ticket_id: str):
     return jsonify({"text": "\n".join(lines)}), 200
 
 
+_KB_TICKET = "KB-RELOAD"
+_KB_STEPS = [
+    {"id": "download", "label": "Download"},
+    {"id": "load", "label": "Load"},
+    {"id": "embed", "label": "Embed"},
+    {"id": "upsert", "label": "Upsert"},
+]
+_KB_ORDER = [s["id"] for s in _KB_STEPS]
+
+
 def _handle_reload_kb(user_id: str):
     def _run():
+        from core.events.graph_events import emit_plan, emit_event
+        last = {"stage": None}
+
+        def progress(stage, detail):
+            # /viz: mark prior steps done, the current one running (gray → color).
+            try:
+                if stage == "done":
+                    emit_event(_KB_TICKET, "step_update", {"step": "upsert", "state": "done", "detail": detail})
+                else:
+                    idx = _KB_ORDER.index(stage) if stage in _KB_ORDER else 0
+                    for s in _KB_ORDER[:idx]:
+                        emit_event(_KB_TICKET, "step_update", {"step": s, "state": "done"})
+                    emit_event(_KB_TICKET, "step_update", {"step": stage, "state": "running", "detail": detail})
+            except Exception:
+                pass
+            # Slack: one line per stage change (not per upsert batch — avoid spam).
+            if stage != last["stage"]:
+                slack.alert(f"🔄 *KB reload* [{stage}]: {detail}")
+                last["stage"] = stage
+
         try:
-            slack.alert(f"🔄 *KB reload started* by <@{user_id}> — fetching from Google Drive…")
-            result = drive_ingest.run(
-                progress=lambda m: slack.alert(f"🔄 *KB reload*: {m}")
-            )
+            emit_plan(_KB_TICKET, "command", "Knowledge base reload", _KB_STEPS)
+            slack.alert(f"🔄 *KB reload started* by <@{user_id}>")
+            slack.alert("📋 *KB reload* (4 steps): 1.Download → 2.Load → 3.Embed → 4.Upsert")
+            result = drive_ingest.run(progress=progress)
             ingested = result.get("ingested", 0)
             skipped = result.get("skipped", 0)
             errors = result.get("errors", [])
             if ingested == 0:
+                emit_event(_KB_TICKET, "step_update", {"step": "upsert", "state": "error"})
                 detail = errors[0].get("error", "no documents ingested") if errors else "no documents ingested"
                 slack.alert(f"⚠️ *KB reload finished with no data* — {detail}")
             else:
+                for s in _KB_ORDER:
+                    emit_event(_KB_TICKET, "step_update", {"step": s, "state": "done"})
                 extra = f", {len(errors)} chunk error(s)" if errors else ""
                 slack.alert(f"✅ *KB reload complete* — {ingested} chunks ingested ({skipped} skipped{extra}).")
         except Exception as e:  # noqa: BLE001 — surface to Slack, never crash the thread
+            emit_event(_KB_TICKET, "step_update", {"step": "upsert", "state": "error"})
             slack.alert(f"❌ *KB reload failed*: {e}")
 
     Thread(target=_run, daemon=True).start()
-    return jsonify({"text": "🔄 KB reload started — progress will post to #pipeline-alerts."}), 200
+    return jsonify({"text": "🔄 KB reload started — watch /viz (ticket `KB-RELOAD`) and #pipeline-alerts."}), 200
 
 
 def _handle_stop(text: str, user_id: str):

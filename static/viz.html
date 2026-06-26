@@ -485,6 +485,7 @@ function highlightScenario(scenario, path) {
 // ── Steps strip (expectation gray → progress color) ──────
 
 let planSteps = [];
+let currentAgent = null;
 
 function renderSteps(data) {
   planSteps = data.steps || [];
@@ -597,6 +598,7 @@ function connectSSE(ticketId) {
 
   es.addEventListener('agent_start', e => {
     const d = JSON.parse(e.data);
+    currentAgent = d.agent;
     setNodeState(d.agent, 'running');
     setStepState(d.agent, 'running');
     setSubstep(d.agent, 'started');
@@ -620,9 +622,10 @@ function connectSSE(ticketId) {
 
   es.addEventListener('agent_progress', e => {
     const d = JSON.parse(e.data);
-    if (d.agent) setStepState(d.agent, 'running');
-    setSubstep(d.agent, d.step + (d.detail ? ' — ' + d.detail : ''));
-    addTimelineEntry(d.timestamp, `<em>${d.agent}</em>: ${d.step}`, '');
+    const who = d.agent || currentAgent;
+    if (who) setStepState(who, 'running');
+    setSubstep(who, d.step + (d.detail ? ' — ' + d.detail : ''));
+    addTimelineEntry(d.timestamp, `${who ? '<em>' + who + '</em>: ' : ''}${d.step}`, '');
   });
 
   es.addEventListener('step_update', e => {  // command stages (e.g. /reload-kb)

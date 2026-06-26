@@ -142,8 +142,9 @@ def ingest_event():
 
     event_bus.publish(ticket_id, event_type, data)
 
-    # Also broadcast pipeline_start to the lobby so dashboards can auto-discover.
-    if event_type == "pipeline_start":
+    # Broadcast run/command announcements to the lobby so a no-ticket dashboard
+    # can auto-discover and switch to them (pipelines + commands like /reload-kb).
+    if event_type in ("pipeline_start", "plan_ready"):
         event_bus.publish("__lobby__", event_type, data)
 
     return Response("ok", status=200)
