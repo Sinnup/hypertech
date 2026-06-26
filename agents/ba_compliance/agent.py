@@ -57,6 +57,11 @@ def _kb_fallback(prompt: str, n_results: int = 5) -> dict:
     fallback=_kb_fallback,
     fallback_label="Run without regulatory context (last-known-good state)",
     timeout=10.0,
+    # Degrade immediately when the KB is slow/unreachable. With approval gating
+    # (the default), a hung ChromaDB made the agent post a circuit-breaker
+    # approval and wait 120s before falling back — looking like a hang. A missing
+    # KB doesn't need a human to OK proceeding without regulatory context.
+    require_approval=False,
 )
 def _query_kb(prompt: str, n_results: int = 5) -> dict:
     """Query the knowledge base with circuit breaker protection."""

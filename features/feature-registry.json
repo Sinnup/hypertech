@@ -948,21 +948,6 @@
     "changelog_ref": "changelogs/HT-E398C6.md",
     "last_updated": "2026-06-26T08:56:04.374529+00:00"
   },
-  "HT-7D44E9": {
-    "title": "Build an Android TPV app: a button press simulates card insertion and processes ",
-    "scenario": "production",
-    "status": "resumed_at_index_1",
-    "created": "2026-06-26T08:59:11.033415+00:00",
-    "agents_involved": [
-      "orchestrator",
-      "ba_compliance"
-    ],
-    "human_approvals": [],
-    "branch": "feature/HT-7D44E9",
-    "changelog_ref": "changelogs/HT-7D44E9.md",
-    "last_updated": "2026-06-26T09:13:06.165108+00:00",
-    "resumed": true
-  },
   "HT-F3FBAC": {
     "title": "Circuit breaker hangs on wedged dependency (ThreadPoolExecutor shutdown wait)",
     "scenario": "fix",
@@ -987,5 +972,18 @@
     "branch": "feature/HT-547E64",
     "changelog_ref": "changelogs/HT-547E64.md",
     "last_updated": "2026-06-26T09:25:08.649246+00:00"
+  },
+  "HT-81BC59": {
+    "title": "KB circuit breaker degrades immediately (require_approval=False)",
+    "scenario": "fix",
+    "status": "completed",
+    "created": "2026-06-26T03:40:00+00:00",
+    "agents_involved": [
+      "ba_compliance"
+    ],
+    "human_approvals": [],
+    "branch": "feature/HT-81BC59",
+    "changelog_ref": "changelogs/HT-81BC59.md",
+    "last_updated": "2026-06-26T09:50:03.918918+00:00"
   }
 }
