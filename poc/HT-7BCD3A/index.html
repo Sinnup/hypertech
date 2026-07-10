@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cafetería · Punto de Venta (POC)</title>
+  <!-- Tailwind via CDN + Font Awesome icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    /* small custom touches */
+    .product-card:hover {
+      transform: scale(1.02);
+      transition: 0.15s ease;
+    }
+    .cart-item-enter {
+      animation: fadeSlideIn 0.2s ease-out;
+    }
+    @keyframes fadeSlideIn {
+      0% { opacity: 0; transform: translateX(-8px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    /* total badge pulse */
+    .pulse-badge {
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+      70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+  </style>
+</head>
+<body class="bg-amber-50 font-sans antialiased">
+
+  <!-- main app container -->
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+
+    <!-- header: café & pos -->
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="bg-amber-800 text-white p-3 rounded-full shadow">
+          <i class="fas fa-mug-hot text-2xl"></i>
+        </div>
+        <h1 class="text-3xl font-bold text-amber-900 tracking-tight">Café <span class="text-amber-700">Punto de Venta</span></h1>
+      </div>
+      <div class="bg-white px-4 py-2 rounded-full shadow text-sm font-medium text-amber-800 border border-amber-200">
+        <i class="fas fa-store-alt mr-1"></i> Cafetería Central · Demo
+      </div>
+    </div>
+
+    <!-- two column layout: products (left) + cart (right) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- ========== PRODUCTOS ========== -->
+      <div class="lg:col-span-2 bg-white rounded-2xl shadow-md p-5 border border-amber-100">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold text-amber-900"><i class="fas fa-cubes mr-2 text-amber-600"></i>Productos</h2>
+          <span class="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-medium">catálogo rápido</span>
+        </div>
+
+        <!-- grid de productos (dummy data) -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="productGrid">
+          <!-- cada producto se genera con JS, pero dejamos estructura estática de ejemplo -->
+        </div>
+        <p class="text-xs text-gray-400 mt-4 border-t border-amber-100 pt-3">
+          <i class="fas fa-mouse-pointer mr-1"></i> Haz clic en cualquier producto para agregar al carrito
+        </p>
+      </div>
+
+      <!-- ========== CARRITO / RESUMEN ========== -->
+      <div class="bg-white rounded-2xl shadow-md p-5 border border-amber-100 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-semibold text-amber-900"><i class="fas fa-shopping-cart mr-2 text-amber-600"></i>Carrito</h2>
+          <span id="cartCount" class="bg-amber-200 text-amber-900 text-xs font-bold px-2 py-1 rounded-full">0</span>
+        </div>
+
+        <!-- lista de items del carrito (dinámica) -->
+        <div id="cartItemsContainer" class="flex-1 overflow-y-auto max-h-80 space-y-2 pr-1">
+          <!-- los items se renderizan acá -->
+          <div class="text-center text-gray-400 py-8 text-sm" id="emptyCartMsg">
+            <i class="fas fa-coffee text-3xl mb-2 block opacity-40"></i>
+            Carrito vacío<br>selecciona un producto
+          </div>
+        </div>
+
+        <!-- total y acciones -->
+        <div class="border-t border-amber-100 pt-4 mt-4 space-y-3">
+          <div class="flex justify-between text-lg font-bold text-amber-900">
+            <span>Total</span>
+            <span id="totalAmount">$0.00</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="clearCartBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-xl text-sm font-medium transition flex items-center justify-center gap-1">
+              <i class="fas fa-trash-alt"></i> Limpiar
+            </button>
+            <button id="checkoutBtn" class="bg-amber-700 hover:bg-amber-800 text-white py-2 rounded-xl text-sm font-medium transition flex items-center justify-center gap-1 shadow">
+              <i class="fas fa-check-circle"></i> Cobrar
+            </button>
+          </div>
+          <!-- mensaje de pago simulado -->
+          <div id="paymentMessage" class="text-center text-xs text-emerald-600 font-medium hidden transition">
+            <i class="fas fa-check-circle mr-1"></i> Pago exitoso (demo)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- pie de página sutil -->
+    <div class="text-center text-xs text-amber-300 mt-8 border-t border-amber-200 pt-4">
+      <i class="fas fa-code mr-1"></i> POC · flujo interno punto de venta · datos ficticios
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // ---------- DUMMY DATA ----------
+      const products = [
+        { id: 1, name: 'Espresso', price: 2.50, icon: 'fa-mug-saucer', color: 'bg-amber-100' },
+        { id: 2, name: 'Cappuccino', price: 3.20, icon: 'fa-mug-hot', color: 'bg-rose-100' },
+        { id: 3, name: 'Latte', price: 3.50, icon: 'fa-mug-hot', color: 'bg-sky-100' },
+        { id: 4, name: 'Mocha', price: 4.00, icon: 'fa-mug-hot', color: 'bg-yellow-100' },
+        { id: 5, name: 'Americano', price: 2.80, icon: 'fa-mug-saucer', color: 'bg-stone-100' },
+        { id: 6, name: 'Té Chai', price: 3.00, icon: 'fa-leaf', color: 'bg-green-100' },
+        { id: 7, name: 'Croissant', price: 2.20, icon: 'fa-bread-slice', color: 'bg-orange-100' },
+        { id: 8, name: 'Muffin', price: 2.80, icon: 'fa-cupcake', color: 'bg-purple-100' },
+        { id: 9, name: 'Galleta', price: 1.50, icon: 'fa-cookie', color: 'bg-amber-100' },
+      ];
+
+      // estado del carrito
+      let cart = []; // { id, name, price, quantity }
+
+      // referencias DOM
+      const productGrid = document.getElementById('productGrid');
+      const cartContainer = document.getElementById('cartItemsContainer');
+      const emptyCartMsg = document.getElementById('emptyCartMsg');
+      const totalSpan = document.getElementById('totalAmount');
+      const cartCountSpan = document.getElementById('cartCount');
+      const clearBtn = document.getElementById('clearCartBtn');
+      const checkoutBtn = document.getElementById('checkoutBtn');
+      const paymentMsg = document.getElementById('paymentMessage');
+
+      // ---------- RENDER PRODUCTOS ----------
+      function renderProducts() {
+        productGrid.innerHTML = '';
+        products.forEach(prod => {
+          const card = document.createElement('div');
+          card.className = `product-card cursor-pointer rounded-xl p-3 ${prod.color} border border-amber-200/60 shadow-sm flex flex-col items-center justify-center transition hover:shadow-md active:scale-95`;
+          card.dataset.id = prod.id;
+          card.innerHTML = `
+            <i class="fas ${prod.icon} text-2xl text-amber-800 mb-1"></i>
+            <span class="font-semibold text-sm text-amber-900">${prod.name}</span>
+            <span class="text-xs font-medium text-amber-700">$${prod.price.toFixed(2)}</span>
+          `;
+          card.addEventListener('click', () => addToCart(prod.id));
+          productGrid.appendChild(card);
+        });
+      }
+
+      // ---------- AGREGAR AL CARRITO ----------
+      function addToCart(productId) {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+
+        const existing = cart.find(item => item.id === productId);
+        if (existing) {
+          existing.quantity += 1;
+        } else {
+          cart.push({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            quantity: 1
+          });
+        }
+        // ocultar mensaje de pago si estaba visible
+        paymentMsg.classList.add('hidden');
+        renderCart();
+      }
+
+      // ---------- ELIMINAR / DISMINUIR ----------
+      function removeFromCart(productId) {
+        const index = cart.findIndex(item => item.id === productId);
+        if (index === -1) return;
+
+        if (cart[index].quantity > 1) {
+          cart[index].quantity -= 1;
+        } else {
+          cart.splice(index, 1);
+        }
+        renderCart();
+      }
+
+      // ---------- RENDER CARRITO ----------
+      function renderCart() {
+        // limpiar contenedor (excepto el mensaje vacío que se oculta/muestra)
+        const items = cartContainer.querySelectorAll('.cart-item');
+        items.forEach(el => el.remove());
+
+        // mostrar/ocultar mensaje vacío
+        if (cart.length === 0) {
+          emptyCartMsg.classList.remove('hidden');
+        } else {
+          emptyCartMsg.classList.add('hidden');
+        }
+
+        // crear elementos del carrito
+        cart.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'cart-item cart-item-enter flex items-center justify-between bg-amber-50/80 p-2 rounded-lg border border-amber-100';
+          row.dataset.id = item.id;
+
+          // info izquierda
+          const infoDiv = document.createElement('div');
+          infoDiv.className = 'flex items-center gap-2';
+          infoDiv.innerHTML = `
+            <span class="font-medium text-sm text-amber-900">${item.name}</span>
+            <span class="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">x${item.quantity}</span>
+          `;
+
+          // precio y botón eliminar
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'flex items-center gap-2';
+          actionsDiv.innerHTML = `
+            <span class="text-sm font-semibold text-amber-800">$${(item.price * item.quantity).toFixed(2)}</span>
+            <button class="remove-btn text-red-400 hover:text-red-600 transition text-sm bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm border border-red-100">
+              <i class="fas fa-minus"></i>
+            </button>
+          `;
+
+          row.appendChild(infoDiv);
+          row.appendChild(actionsDiv);
+
+          // evento para botón eliminar/disminuir
+          const removeBtn = row.querySelector('.remove-btn');
+          removeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFromCart(item.id);
+          });
+
+          cartContainer.appendChild(row);
+        });
+
+        // actualizar total y contador
+        updateTotals();
+      }
+
+      // ---------- ACTUALIZAR TOTAL Y CONTADOR ----------
+      function updateTotals() {
+        let total = 0;
+        let count = 0;
+        cart.forEach(item => {
+          total += item.price * item.quantity;
+          count += item.quantity;
+        });
+        totalSpan.textContent = `$${total.toFixed(2)}`;
+        cartCountSpan.textContent = count;
+      }
+
+      // ---------- LIMPIAR CARRITO ----------
+      function clearCart() {
+        if (cart.length === 0) return;
+        cart = [];
+        renderCart();
+        paymentMsg.classList.add('hidden');
+      }
+
+      // ---------- SIMULAR COBRO ----------
+      function simulateCheckout() {
+        if (cart.length === 0) {
+          // feedback rápido
+          paymentMsg.className = 'text-center text-xs text-red-500 font-medium mt-2';
+          paymentMsg.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i> Carrito vacío';
+          paymentMsg.classList.remove('hidden');
+          setTimeout(() => {
+            paymentMsg.classList.add('hidden');
+          }, 2000);
+          return;
+        }
+
+        // mostrar mensaje de pago exitoso
+        paymentMsg.className = 'text-center text-xs text-emerald-600 font-medium mt-2';
+        paymentMsg.innerHTML = '<i class="fas fa-check-circle mr-1"></i> Pago exitoso (demo)';
+        paymentMsg.classList.remove('hidden');
+
+        // limpiar carrito después de 1.2s (simulación)
+        setTimeout(() => {
+          cart = [];
+          renderCart();
+          // mantener mensaje un momento
+          setTimeout(() => {
+            paymentMsg.classList.add('hidden');
+          }, 800);
+        }, 1200);
+      }
+
+      // ---------- EVENT LISTENERS ----------
+      clearBtn.addEventListener('click', clearCart);
+      checkoutBtn.addEventListener('click', simulateCheckout);
+
+      // ---------- INICIALIZAR ----------
+      renderProducts();
+      renderCart(); // carrito vacío
+    })();
+  </script>
+</body>
+</html>
